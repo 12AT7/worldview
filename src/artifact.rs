@@ -1,6 +1,6 @@
 use crate::{
     model,
-    pipeline::{Mesh, PointCloud},
+    pipeline::{Mesh, Wireframe, PointCloud},
     Element, Key, PlaybackEvent, WindowState,
 };
 
@@ -28,6 +28,7 @@ pub trait RenderArtifact {
 
 pub enum Artifact {
     PointCloud(PointCloud),
+    Wireframe(Wireframe),
     Mesh(Mesh),
 }
 
@@ -59,6 +60,7 @@ impl Artifact {
             return Some(Artifact::PointCloud(PointCloud { vertices }));
         }
 
+        // We need a discriminant for mesh vs. wireframe somehow.
         if keys == HashSet::from([Element::Vertex, Element::Face]) {
             let element_size = mem::size_of::<model::PlainVertex>();
             let count = elements.get(&Element::Vertex).unwrap().count;
@@ -78,7 +80,7 @@ impl Artifact {
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
 
-            return Some(Artifact::Mesh(Mesh { vertices, indices }));
+            return Some(Artifact::Wireframe(Wireframe { vertices, indices }));
         }
 
         None
@@ -94,6 +96,23 @@ impl Artifact {
                     .count;
                 let element_size = mem::size_of::<model::PlainVertex>();
                 vertices.size() as usize <= element_size * count
+            }
+            Artifact::Wireframe(Wireframe { vertices, indices }) => {
+                let vertex_count = header
+                    .elements
+                    .get(&String::from(Element::Vertex))
+                    .unwrap()
+                    .count;
+                let vertex_size = mem::size_of::<model::PlainVertex>();
+
+                let index_count = header
+                    .elements
+                    .get(&String::from(Element::Face))
+                    .unwrap()
+                    .count;
+                let index_size = mem::size_of::<model::Wireframe>();
+                (vertices.size() as usize <= vertex_size * vertex_count)
+                    || (indices.size() as usize <= index_size * index_count)
             }
             Artifact::Mesh(Mesh { vertices, indices }) => {
                 let vertex_count = header
@@ -126,6 +145,21 @@ impl Artifact {
                     .unwrap();
                 queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
             }
+            Artifact::Wireframe(Wireframe { vertices, indices }) => {
+                let parse = Parser::<model::PlainVertex>::new();
+                let element = header.elements.get(&String::from(Element::Vertex)).unwrap();
+                let data = parse
+                    .read_payload_for_element(f, &element, &header)
+                    .unwrap();
+                queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
+
+                let parse = Parser::<model::Wireframe>::new();
+                let element = header.elements.get(&String::from(Element::Face)).unwrap();
+                let data = parse
+                    .read_payload_for_element(f, &element, &header)
+                    .unwrap();
+                queue.write_buffer(&indices, 0, bytemuck::cast_slice(&data));
+            }
             Artifact::Mesh(Mesh { vertices, indices }) => {
                 let parse = Parser::<model::PlainVertex>::new();
                 let element = header.elements.get(&String::from(Element::Vertex)).unwrap();
@@ -151,6 +185,7 @@ impl Artifact {
     ) -> wgpu::RenderPipeline {
         match self {
             Artifact::PointCloud(_) => PointCloud::create_pipeline(&device, &state),
+            Artifact::Wireframe(_) => Wireframe::create_pipeline(&device, &state),
             Artifact::Mesh(_) => Mesh::create_pipeline(&device, &state),
         }
     }

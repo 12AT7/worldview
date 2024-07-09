@@ -36,6 +36,7 @@ pub struct WindowState<'win> {
     exit: watch::Sender<bool>,
     pub surface_capabilities: wgpu::SurfaceCapabilities,
     pub point_cloud_pipeline_layout: wgpu::PipelineLayout,
+    pub wireframe_pipeline_layout: wgpu::PipelineLayout,
     pub mesh_pipeline_layout: wgpu::PipelineLayout,
     pub camera_bind_group_layout: wgpu::BindGroupLayout,
     pub camera_bind_group: wgpu::BindGroup,
@@ -105,6 +106,8 @@ impl<'win> WindowState<'win> {
 
         let point_cloud_pipeline_layout =
             pipeline::PointCloud::create_pipeline_layout(&device, &camera_bind_group_layout);
+        let wireframe_pipeline_layout =
+            pipeline::Wireframe::create_pipeline_layout(&device, &camera_bind_group_layout);
         let mesh_pipeline_layout =
             pipeline::Mesh::create_pipeline_layout(&device, &camera_bind_group_layout);
 
@@ -117,6 +120,7 @@ impl<'win> WindowState<'win> {
             playback,
             exit,
             point_cloud_pipeline_layout,
+            wireframe_pipeline_layout,
             mesh_pipeline_layout,
             camera_bind_group,
             surface_capabilities,
@@ -202,10 +206,27 @@ impl<'win> WindowState<'win> {
                 render_pass.set_pipeline(self.pipeline.get(key).unwrap());
                 match artifact {
                     Artifact::PointCloud(point_cloud) => {
-                        pipeline::PointCloud::render(&point_cloud.vertices, &self, &mut render_pass);
+                        pipeline::PointCloud::render(
+                            &point_cloud.vertices,
+                            &self,
+                            &mut render_pass,
+                        );
+                    }
+                    Artifact::Wireframe(wireframe) => {
+                        pipeline::Wireframe::render(
+                            &wireframe.vertices,
+                            &wireframe.indices,
+                            &self,
+                            &mut render_pass,
+                        );
                     }
                     Artifact::Mesh(mesh) => {
-                        pipeline::Mesh::render(&mesh.vertices, &mesh.indices, &self, &mut render_pass);
+                        pipeline::Mesh::render(
+                            &mesh.vertices,
+                            &mesh.indices,
+                            &self,
+                            &mut render_pass,
+                        );
                     }
                 }
             }

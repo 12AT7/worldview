@@ -59,10 +59,10 @@ impl Playback {
             match Artifact::new(&device, &key, &header) {
                 Some(artifact) => {
                     self.artifact.insert(key.artifact.clone(), artifact);
-                    log::debug!("Allocated artifact type {}", key.artifact)
+                    log::debug!("Allocated artifact {}", key.artifact)
                 }
                 None => {
-                    log::debug!("Unknown artifact type {}", key.artifact);
+                    log::debug!("Unknown artifact {}", key.artifact);
                 }
             };
         }

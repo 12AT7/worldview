@@ -3,18 +3,18 @@ use crate::{model, Playback, RenderArtifact, WindowState};
 use std::mem;
 use wgpu;
 
-pub struct Mesh {
+pub struct Wireframe {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
 }
 
-impl Mesh {
+impl Wireframe {
     pub fn create_pipeline_layout(
         device: &wgpu::Device,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("mesh::pipeline_layout"),
+            label: Some("wireframe::pipeline_layout"),
             bind_group_layouts: &[&camera_bind_group_layout],
             push_constant_ranges: &[],
         })
@@ -22,14 +22,14 @@ impl Mesh {
 
     pub fn create_pipeline(device: &wgpu::Device, state: &WindowState) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("mesh::shader"),
+            label: Some("wireframe::shader"),
             source: wgpu::ShaderSource::Wgsl(
-                (include_str!("shader/mesh.wsgl").to_owned()).into(),
+                (include_str!("shader/wireframe.wsgl").to_owned()).into(),
             ),
         });
 
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("mesh::render_pipeline"),
+            label: Some("wireframe::render_pipeline"),
             layout: Some(&state.mesh_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -48,7 +48,7 @@ impl Mesh {
                 })],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                topology: wgpu::PrimitiveTopology::LineList,
                 ..Default::default()
             },
             depth_stencil: None,
@@ -63,10 +63,10 @@ impl Mesh {
         state: &'rpass WindowState,
         render_pass: &mut wgpu::RenderPass<'rpass>,
     ) {
-        let num_facets = indices.size() / 8 as u64;
+        let num_lines = indices.size() / 8 as u64;
         render_pass.set_bind_group(0, &state.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, vertices.slice(..));
         render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        render_pass.draw_indexed(0..num_facets as u32, 0, 0..1);
+        render_pass.draw_indexed(0..num_lines as u32, 0, 0..1);
     }
 }

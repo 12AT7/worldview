@@ -1,7 +1,7 @@
 use crate::{
     model,
     pipeline::{Mesh, PointCloud, Wireframe},
-    Element, Key, PlaybackEvent, WindowState,
+    Element, Key, InjectionEvent, WindowState,
 };
 
 use ply_rs::{parser::Parser, ply};

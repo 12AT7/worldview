@@ -17,8 +17,8 @@ use winit::{
 };
 
 use crate::{
-    pipeline, Artifact, ArtifactUniform, Camera, CameraController, CameraUniform, PlaybackEvent,
-    PlaybackLock, Projection, RenderArtifact,
+    pipeline, Artifact, ArtifactUniform, Camera, CameraController, CameraUniform, InjectionEvent,
+    Projection, RenderArtifact, Injector, injector::Sequence
 };
 
 // The playback thread needs to load GPU buffers, and for that it
@@ -34,7 +34,7 @@ pub static QUEUE: OnceLock<wgpu::Queue> = OnceLock::new();
 pub struct WindowState<'win> {
     surface: wgpu::Surface<'win>,
     window: &'win Window,
-    playback: PlaybackLock,
+    injector: Sequence,
     exit: watch::Sender<bool>,
     pub surface_capabilities: wgpu::SurfaceCapabilities,
     pub point_cloud_pipeline_layout: wgpu::PipelineLayout,
@@ -57,7 +57,7 @@ pub struct WindowState<'win> {
 impl<'win> WindowState<'win> {
     pub async fn new(
         window: &'win Window,
-        playback: PlaybackLock,
+        injector: Sequence,
         exit: watch::Sender<bool>,
     ) -> WindowState<'win> {
         let size = window.inner_size();
@@ -92,13 +92,6 @@ impl<'win> WindowState<'win> {
             contents: bytemuck::cast_slice(&[camera_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-
-        // let artifact_uniform = ArtifactUniform::new();
-        // let artifact_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Model Uniform Buffer"),
-        //     contents: bytemuck::cast_slice(&[artifact_uniform]),
-        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        // });
 
         let world_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -169,7 +162,7 @@ impl<'win> WindowState<'win> {
         WindowState {
             surface,
             window,
-            playback,
+            injector,
             exit,
             surface_capabilities,
             point_cloud_pipeline_layout,
@@ -208,17 +201,19 @@ impl<'win> WindowState<'win> {
     }
 
     fn redraw(&mut self) {
-        let playback = self.playback.lock().unwrap();
-
         let device = match DEVICE.get() {
             Some(device) => device,
             None => {
-                log::debug!("Playback waiting for WGPU initialization");
+                log::debug!("Waiting for WGPU initialization");
                 return;
             }
         };
 
-        for (key, artifact) in &playback.artifact {
+        let artifacts = self.injector.get_artifacts();
+        let artifacts = artifacts.lock().unwrap();
+
+        for (key, artifact) in artifacts.iter() {
+            let key = &key.artifact;
             if !self.pipeline.contains_key(key) {
                 let pipeline = artifact.create_pipeline(&device, &self);
                 let buffer = artifact.create_uniform_buffer(&device);
@@ -277,7 +272,8 @@ impl<'win> WindowState<'win> {
             });
 
             render_pass.set_bind_group(0, &self.world_bind_group, &[]);
-            for (key, artifact) in &playback.artifact {
+            for (key, artifact) in artifacts.iter() {
+                let key = &key.artifact;
                 render_pass.set_pipeline(self.pipeline.get(key).unwrap());
                 render_pass.set_bind_group(1, &self.artifact_bind_group.get(key).unwrap(), &[]);
                 match artifact {
@@ -322,14 +318,14 @@ impl<'win> WindowState<'win> {
     }
 }
 
-impl<'win> ApplicationHandler<PlaybackEvent> for WindowState<'win> {
+impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: PlaybackEvent) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: InjectionEvent) {
         match event {
-            PlaybackEvent::Refresh(key) => {
+            InjectionEvent::Refresh(key) => {
                 self.window.request_redraw();
             }
             _ => {
@@ -394,14 +390,14 @@ impl<'win> ApplicationHandler<PlaybackEvent> for WindowState<'win> {
 }
 
 pub async fn run(
-    playback: PlaybackLock,
-    event_loop: EventLoop<PlaybackEvent>,
+    injector: Sequence,
+    event_loop: EventLoop<InjectionEvent>,
     exit: watch::Sender<bool>,
 ) {
     let window = event_loop
         .create_window(WindowAttributes::default())
         .unwrap();
 
-    let mut app = WindowState::new(&window, playback.clone(), exit).await;
+    let mut app = WindowState::new(&window, injector, exit).await;
     let _ = event_loop.run_app(&mut app);
 }

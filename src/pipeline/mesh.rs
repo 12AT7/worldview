@@ -1,4 +1,4 @@
-use crate::{model, ArtifactUniform, Playback, RenderArtifact, WindowState};
+use crate::{model, ArtifactUniform, RenderArtifact, WindowState};
 
 use std::mem;
 use wgpu;

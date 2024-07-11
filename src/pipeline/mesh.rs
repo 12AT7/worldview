@@ -1,7 +1,8 @@
-use crate::{model, Playback, RenderArtifact, WindowState};
+use crate::{model, ArtifactUniform, Playback, RenderArtifact, WindowState};
 
 use std::mem;
 use wgpu;
+use wgpu::util::DeviceExt;
 
 pub struct Mesh {
     pub vertices: wgpu::Buffer,
@@ -11,11 +12,12 @@ pub struct Mesh {
 impl Mesh {
     pub fn create_pipeline_layout(
         device: &wgpu::Device,
-        camera_bind_group_layout: &wgpu::BindGroupLayout,
+        world_bind_group_layout: &wgpu::BindGroupLayout,
+        artifact_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("mesh::pipeline_layout"),
-            bind_group_layouts: &[&camera_bind_group_layout],
+            bind_group_layouts: &[&world_bind_group_layout, &artifact_bind_group_layout],
             push_constant_ranges: &[],
         })
     }
@@ -24,7 +26,7 @@ impl Mesh {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mesh::shader"),
             source: wgpu::ShaderSource::Wgsl(
-                (include_str!("shader/mesh.wsgl").to_owned()).into(),
+                (include_str!("shader/plain_geometry.wsgl").to_owned()).into(),
             ),
         });
 
@@ -57,6 +59,15 @@ impl Mesh {
         })
     }
 
+    pub fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+        let uniform = ArtifactUniform::new([0.0, 0.0, 1.0, 1.0]);
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("mesh::uniform_buffer"),
+            contents: bytemuck::cast_slice(&[uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        })
+    }
+
     pub fn render<'rpass>(
         vertices: &'rpass wgpu::Buffer,
         indices: &'rpass wgpu::Buffer,
@@ -64,7 +75,6 @@ impl Mesh {
         render_pass: &mut wgpu::RenderPass<'rpass>,
     ) {
         let num_facets = indices.size() / 8 as u64;
-        render_pass.set_bind_group(0, &state.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, vertices.slice(..));
         render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..num_facets as u32, 0, 0..1);

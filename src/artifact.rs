@@ -1,6 +1,6 @@
 use crate::{
     model,
-    pipeline::{Mesh, Wireframe, PointCloud},
+    pipeline::{Mesh, PointCloud, Wireframe},
     Element, Key, PlaybackEvent, WindowState,
 };
 
@@ -14,16 +14,31 @@ use std::{
 pub trait RenderArtifact {
     fn create_pipeline_layout(
         device: &wgpu::Device,
-        camera_bind_group_layout: &wgpu::BindGroupLayout,
+        world_bind_group_layout: &wgpu::BindGroupLayout,
+        artifact_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::PipelineLayout;
 
     fn create_pipeline(device: &wgpu::Device, playback: &WindowState) -> wgpu::RenderPipeline;
+
+    fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer;
 
     fn render<'rpass>(
         vertices: &'rpass wgpu::Buffer,
         state: &'rpass WindowState,
         render_pass: &mut wgpu::RenderPass<'rpass>,
     );
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ArtifactUniform {
+    color: [f32; 4],
+}
+
+impl ArtifactUniform {
+    pub fn new(color: [f32; 4]) -> Self {
+        Self { color }
+    }
 }
 
 pub enum Artifact {
@@ -175,6 +190,14 @@ impl Artifact {
                     .unwrap();
                 queue.write_buffer(&indices, 0, bytemuck::cast_slice(&data));
             }
+        }
+    }
+
+    pub fn create_uniform_buffer(&self, device: &wgpu::Device) -> wgpu::Buffer {
+        match self {
+            Artifact::PointCloud(_) => PointCloud::create_uniform_buffer(&device),
+            Artifact::Wireframe(_) => Wireframe::create_uniform_buffer(&device),
+            Artifact::Mesh(_) => Mesh::create_uniform_buffer(&device),
         }
     }
 

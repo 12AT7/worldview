@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
+    time::Instant,
 };
 
 use tokio::sync::watch;
@@ -16,7 +17,8 @@ use winit::{
 };
 
 use crate::{
-    pipeline, Artifact, Camera, CameraUniform, PlaybackEvent, PlaybackLock, RenderArtifact,
+    pipeline, Artifact, ArtifactUniform, Camera, CameraController, CameraUniform, PlaybackEvent,
+    PlaybackLock, Projection, RenderArtifact,
 };
 
 // The playback thread needs to load GPU buffers, and for that it
@@ -38,10 +40,18 @@ pub struct WindowState<'win> {
     pub point_cloud_pipeline_layout: wgpu::PipelineLayout,
     pub wireframe_pipeline_layout: wgpu::PipelineLayout,
     pub mesh_pipeline_layout: wgpu::PipelineLayout,
-    pub camera_bind_group_layout: wgpu::BindGroupLayout,
-    pub camera_bind_group: wgpu::BindGroup,
+    world_bind_group_layout: wgpu::BindGroupLayout,
+    artifact_bind_group_layout: wgpu::BindGroupLayout,
+    pub world_bind_group: wgpu::BindGroup,
     pipeline: HashMap<String, wgpu::RenderPipeline>,
+    artifact_bind_group: HashMap<String, wgpu::BindGroup>,
+    artifact_uniform_buffer: HashMap<String, wgpu::Buffer>,
     camera: Camera,
+    camera_buffer: wgpu::Buffer,
+    camera_uniform: CameraUniform,
+    camera_controller: CameraController,
+    projection: Projection,
+    mouse_pressed: bool,
 }
 
 impl<'win> WindowState<'win> {
@@ -71,45 +81,87 @@ impl<'win> WindowState<'win> {
             .unwrap();
 
         let camera = Camera::new();
+        let projection = Projection::new(size.width, size.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let camera_controller = CameraController::new();
+
         let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
+        camera_uniform.update_view_proj(&camera, &projection);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
+            label: Some("Camera Uniform Buffer"),
             contents: bytemuck::cast_slice(&[camera_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let camera_bind_group_layout =
+        // let artifact_uniform = ArtifactUniform::new();
+        // let artifact_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Model Uniform Buffer"),
+        //     contents: bytemuck::cast_slice(&[artifact_uniform]),
+        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        // });
+
+        let world_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                entries: &[
+                    // CameraUniform
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
+                ],
+                label: Some("uniform_bind_group_layout"),
             });
 
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
+        let world_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &world_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: camera_buffer.as_entire_binding(),
             }],
-            label: Some("camera_bind_group"),
+            label: Some("world_bind_group"),
         });
 
-        let point_cloud_pipeline_layout =
-            pipeline::PointCloud::create_pipeline_layout(&device, &camera_bind_group_layout);
-        let wireframe_pipeline_layout =
-            pipeline::Wireframe::create_pipeline_layout(&device, &camera_bind_group_layout);
-        let mesh_pipeline_layout =
-            pipeline::Mesh::create_pipeline_layout(&device, &camera_bind_group_layout);
+        let artifact_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    // ArtifactUniform
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+                label: Some("artifact_bind_group_layout"),
+            });
+
+        let point_cloud_pipeline_layout = pipeline::PointCloud::create_pipeline_layout(
+            &device,
+            &world_bind_group_layout,
+            &artifact_bind_group_layout,
+        );
+
+        let wireframe_pipeline_layout = pipeline::Wireframe::create_pipeline_layout(
+            &device,
+            &world_bind_group_layout,
+            &artifact_bind_group_layout,
+        );
+
+        let mesh_pipeline_layout = pipeline::Mesh::create_pipeline_layout(
+            &device,
+            &world_bind_group_layout,
+            &artifact_bind_group_layout,
+        );
 
         DEVICE.set(device).unwrap();
         QUEUE.set(queue).unwrap();
@@ -119,14 +171,22 @@ impl<'win> WindowState<'win> {
             window,
             playback,
             exit,
+            surface_capabilities,
             point_cloud_pipeline_layout,
             wireframe_pipeline_layout,
             mesh_pipeline_layout,
-            camera_bind_group,
-            surface_capabilities,
-            camera_bind_group_layout,
+            world_bind_group_layout,
+            artifact_bind_group_layout,
+            world_bind_group,
             pipeline: HashMap::new(),
+            artifact_bind_group: HashMap::new(),
+            artifact_uniform_buffer: HashMap::new(),
             camera,
+            camera_buffer,
+            camera_uniform,
+            camera_controller,
+            projection,
+            mouse_pressed: false,
         }
     }
 
@@ -161,10 +221,25 @@ impl<'win> WindowState<'win> {
         for (key, artifact) in &playback.artifact {
             if !self.pipeline.contains_key(key) {
                 let pipeline = artifact.create_pipeline(&device, &self);
+                let buffer = artifact.create_uniform_buffer(&device);
+                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &self.artifact_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buffer.as_entire_binding(),
+                    }],
+                    label: Some("artifact_bind_group"),
+                });
+
                 self.pipeline.insert(key.clone(), pipeline);
+                self.artifact_bind_group.insert(key.clone(), bind_group);
+                self.artifact_uniform_buffer.insert(key.clone(), buffer);
             }
         }
 
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera_uniform
+            .update_view_proj(&self.camera, &self.projection);
         let surface = &self.surface;
         let output = match surface.get_current_texture() {
             Ok(surface) => surface,
@@ -201,9 +276,10 @@ impl<'win> WindowState<'win> {
                 ..Default::default()
             });
 
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.world_bind_group, &[]);
             for (key, artifact) in &playback.artifact {
                 render_pass.set_pipeline(self.pipeline.get(key).unwrap());
+                render_pass.set_bind_group(1, &self.artifact_bind_group.get(key).unwrap(), &[]);
                 match artifact {
                     Artifact::PointCloud(point_cloud) => {
                         pipeline::PointCloud::render(
@@ -234,6 +310,13 @@ impl<'win> WindowState<'win> {
 
         // Let 'er rip.  Render the frame.
         let queue = QUEUE.get().unwrap();
+
+        queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
         queue.submit([encoder.finish()]);
         output.present();
     }
@@ -252,6 +335,20 @@ impl<'win> ApplicationHandler<PlaybackEvent> for WindowState<'win> {
             _ => {
                 log::info!("Unhandled user event: {event:?}");
             }
+        }
+    }
+
+    fn device_event(&mut self, event_loop: &ActiveEventLoop, device: DeviceId, event: DeviceEvent) {
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                if self.mouse_pressed {
+                    self.camera_controller.process_mouse(delta.0, delta.1);
+                    self.camera_controller.update_camera(&mut self.camera);
+                    self.camera_uniform
+                        .update_view_proj(&self.camera, &self.projection);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -280,6 +377,16 @@ impl<'win> ApplicationHandler<PlaybackEvent> for WindowState<'win> {
             }
             WindowEvent::RedrawRequested => {
                 self.redraw();
+            }
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state,
+                ..
+            } => {
+                self.mouse_pressed = state == ElementState::Pressed;
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.camera_controller.process_scroll(delta);
             }
             _ => {}
         }

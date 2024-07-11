@@ -12,10 +12,10 @@ mod camera;
 
 pub use key::Key;
 pub use playback::{Playback, PlaybackLock};
-pub use artifact::{Artifact, RenderArtifact};
+pub use artifact::{Artifact, RenderArtifact, ArtifactUniform};
 pub use element::Element;
 pub use window::WindowState;
-pub use camera::{Camera, CameraUniform};
+pub use camera::{Camera, Projection, CameraController, CameraUniform};
 
 #[derive(Debug)]
 pub enum PlaybackEvent {

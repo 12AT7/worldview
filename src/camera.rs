@@ -1,5 +1,5 @@
 use cgmath::{InnerSpace, Matrix4, Point3, Rad, Vector3};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseScrollDelta;
 

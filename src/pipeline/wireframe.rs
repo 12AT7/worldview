@@ -1,7 +1,5 @@
-use crate::{model, RenderArtifact, WindowState, ArtifactUniform};
+use crate::{model, WindowState, ArtifactUniform};
 
-use std::mem;
-use wgpu;
 use wgpu::util::DeviceExt;
 
 pub struct Wireframe {
@@ -71,7 +69,6 @@ impl Wireframe {
     pub fn render<'rpass>(
         vertices: &'rpass wgpu::Buffer,
         indices: &'rpass wgpu::Buffer,
-        state: &'rpass WindowState,
         render_pass: &mut wgpu::RenderPass<'rpass>,
     ) {
         let num_lines = indices.size() / 8 as u64;

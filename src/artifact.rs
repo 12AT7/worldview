@@ -1,7 +1,7 @@
 use crate::{
     model,
     pipeline::{Mesh, PointCloud, Wireframe},
-    Element, Key, InjectionEvent, WindowState,
+    Element, Key, WindowState,
 };
 
 use ply_rs::{parser::Parser, ply};
@@ -22,11 +22,11 @@ pub trait RenderArtifact {
 
     fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer;
 
-    fn render<'rpass>(
-        vertices: &'rpass wgpu::Buffer,
-        state: &'rpass WindowState,
-        render_pass: &mut wgpu::RenderPass<'rpass>,
-    );
+    // fn render<'rpass>(
+    //     vertices: &'rpass wgpu::Buffer,
+    //     state: &'rpass WindowState,
+    //     render_pass: &mut wgpu::RenderPass<'rpass>,
+    // );
 }
 
 #[repr(C)]
@@ -126,6 +126,7 @@ impl Artifact {
                     .unwrap()
                     .count;
                 let index_size = mem::size_of::<model::Wireframe>();
+
                 (vertices.size() as usize <= vertex_size * vertex_count)
                     || (indices.size() as usize <= index_size * index_count)
             }

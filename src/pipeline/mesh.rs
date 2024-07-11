@@ -1,7 +1,5 @@
-use crate::{model, ArtifactUniform, RenderArtifact, WindowState};
+use crate::{model, ArtifactUniform, WindowState};
 
-use std::mem;
-use wgpu;
 use wgpu::util::DeviceExt;
 
 pub struct Mesh {
@@ -71,7 +69,6 @@ impl Mesh {
     pub fn render<'rpass>(
         vertices: &'rpass wgpu::Buffer,
         indices: &'rpass wgpu::Buffer,
-        state: &'rpass WindowState,
         render_pass: &mut wgpu::RenderPass<'rpass>,
     ) {
         let num_facets = indices.size() / 8 as u64;

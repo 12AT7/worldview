@@ -20,7 +20,7 @@ pub async fn run(
     let assets_dir = env::current_dir().unwrap().join("assets");
 
     loop {
-        let mut current_instance: u32 = 0;
+        // let mut current_instance: u32 = 0;
 
         // Iterate through the assets.  Repeat when list is exhausted.
         for path in fs::read_dir(assets_dir.clone())
@@ -49,7 +49,7 @@ pub async fn run(
                 .send_event(InjectionEvent::Refresh(key.clone()))
                 .ok();
 
-            if current_instance != key.instance {
+            // if current_instance != key.instance {
                 // Sleep until the next frame.
                 // The interval should come from the pose timestamp.
                 interval.reset();
@@ -60,9 +60,9 @@ pub async fn run(
                         return
                     }
                 }
-            }
+            // }
 
-            current_instance = key.instance;
+            // current_instance = key.instance;
         }
     }
 }

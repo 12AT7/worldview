@@ -1,11 +1,21 @@
 use crate::{model, ArtifactUniform, RenderArtifact, WindowState};
 
 use std::mem;
-use wgpu;
 use wgpu::util::DeviceExt;
 
 pub struct PointCloud {
     pub vertices: wgpu::Buffer,
+}
+
+impl PointCloud {
+    pub fn render<'rpass>(
+        vertices: &'rpass wgpu::Buffer,
+        render_pass: &mut wgpu::RenderPass<'rpass>,
+    ) {
+        let num_vertices = vertices.size() / mem::size_of::<model::PlainVertex>() as u64;
+        render_pass.set_vertex_buffer(0, vertices.slice(..));
+        render_pass.draw(0..num_vertices as u32, 0..1);
+    }
 }
 
 impl RenderArtifact for PointCloud {
@@ -67,13 +77,4 @@ impl RenderArtifact for PointCloud {
         })
     }
 
-    fn render<'rpass>(
-        vertices: &'rpass wgpu::Buffer,
-        state: &'rpass WindowState,
-        render_pass: &mut wgpu::RenderPass<'rpass>,
-    ) {
-        let num_vertices = vertices.size() / mem::size_of::<model::PlainVertex>() as u64;
-        render_pass.set_vertex_buffer(0, vertices.slice(..));
-        render_pass.draw(0..num_vertices as u32, 0..1);
-    }
 }

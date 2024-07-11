@@ -31,7 +31,7 @@ impl ply::PropertyAccess for PlainVertex {
             ("x", ply::Property::Float(v)) => self.position[0] = v,
             ("y", ply::Property::Float(v)) => self.position[1] = v,
             ("z", ply::Property::Float(v)) => self.position[2] = v,
-            (k, _) => {}
+            (_, _) => {}
         }
     }
 }

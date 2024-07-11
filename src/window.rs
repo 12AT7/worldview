@@ -1,11 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::OnceLock,
-    time::Instant,
-};
+use std::{collections::HashMap, sync::OnceLock};
 
 use tokio::sync::watch;
-use wgpu;
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
@@ -17,8 +12,8 @@ use winit::{
 };
 
 use crate::{
-    pipeline, Artifact, ArtifactUniform, Camera, CameraController, CameraUniform, InjectionEvent,
-    Projection, RenderArtifact, Injector, injector::Sequence
+    injector::Sequence, pipeline, Artifact, Camera, CameraController, CameraUniform,
+    InjectionEvent, Injector, Projection, RenderArtifact,
 };
 
 // The playback thread needs to load GPU buffers, and for that it
@@ -40,7 +35,6 @@ pub struct WindowState<'win> {
     pub point_cloud_pipeline_layout: wgpu::PipelineLayout,
     pub wireframe_pipeline_layout: wgpu::PipelineLayout,
     pub mesh_pipeline_layout: wgpu::PipelineLayout,
-    world_bind_group_layout: wgpu::BindGroupLayout,
     artifact_bind_group_layout: wgpu::BindGroupLayout,
     pub world_bind_group: wgpu::BindGroup,
     pipeline: HashMap<String, wgpu::RenderPipeline>,
@@ -168,7 +162,6 @@ impl<'win> WindowState<'win> {
             point_cloud_pipeline_layout,
             wireframe_pipeline_layout,
             mesh_pipeline_layout,
-            world_bind_group_layout,
             artifact_bind_group_layout,
             world_bind_group,
             pipeline: HashMap::new(),
@@ -278,27 +271,17 @@ impl<'win> WindowState<'win> {
                 render_pass.set_bind_group(1, &self.artifact_bind_group.get(key).unwrap(), &[]);
                 match artifact {
                     Artifact::PointCloud(point_cloud) => {
-                        pipeline::PointCloud::render(
-                            &point_cloud.vertices,
-                            &self,
-                            &mut render_pass,
-                        );
+                        pipeline::PointCloud::render(&point_cloud.vertices, &mut render_pass);
                     }
                     Artifact::Wireframe(wireframe) => {
                         pipeline::Wireframe::render(
                             &wireframe.vertices,
                             &wireframe.indices,
-                            &self,
                             &mut render_pass,
                         );
                     }
                     Artifact::Mesh(mesh) => {
-                        pipeline::Mesh::render(
-                            &mesh.vertices,
-                            &mesh.indices,
-                            &self,
-                            &mut render_pass,
-                        );
+                        pipeline::Mesh::render(&mesh.vertices, &mesh.indices, &mut render_pass);
                     }
                 }
             }
@@ -325,16 +308,18 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: InjectionEvent) {
         match event {
-            InjectionEvent::Refresh(key) => {
+            InjectionEvent::Refresh(_key) => {
                 self.window.request_redraw();
-            }
-            _ => {
-                log::info!("Unhandled user event: {event:?}");
             }
         }
     }
 
-    fn device_event(&mut self, event_loop: &ActiveEventLoop, device: DeviceId, event: DeviceEvent) {
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device: DeviceId,
+        event: DeviceEvent,
+    ) {
         match event {
             DeviceEvent::MouseMotion { delta } => {
                 if self.mouse_pressed {
@@ -351,7 +336,7 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: WindowId,
+        _window_id: WindowId,
         event: WindowEvent,
     ) {
         match event {

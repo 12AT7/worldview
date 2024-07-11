@@ -1,5 +1,4 @@
 use ply_rs::ply;
-use std::mem;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

@@ -1,4 +1,4 @@
-use crate::{Artifact, InjectionEvent, Injector, Key, window::{DEVICE, QUEUE}};
+use crate::{Artifact, Injector, Key, window::{DEVICE, QUEUE}};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -42,7 +42,7 @@ impl Injector for Sequence {
         };
 
         let key = Key {
-            instance: capture["instance"].parse().unwrap(),
+            instance: None, // capture["instance"].parse().unwrap(),
             artifact: capture["artifact"].to_string(),
         };
 

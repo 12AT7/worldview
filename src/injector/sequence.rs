@@ -31,6 +31,8 @@ impl Injector for Sequence {
     }
 
     fn add(&self, path: PathBuf) -> Option<Key> {
+        let mut artifacts = self.artifacts.lock().unwrap();
+
         let re = Regex::new(r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply").unwrap();
         let filename = path.file_name().unwrap().to_str().unwrap();
         let capture = match re.captures(filename) {
@@ -51,7 +53,6 @@ impl Injector for Sequence {
         let f = File::open(path).unwrap();
         let mut f = BufReader::new(f);
         let header = parse_vertex.read_header(&mut f).unwrap();
-        let mut artifacts = self.artifacts.lock().unwrap();
 
         // Remove buffers that are smaller than the new artifact.  This
         // will cause reallocation of larger buffers, immediately below.

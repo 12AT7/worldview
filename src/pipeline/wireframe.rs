@@ -58,7 +58,7 @@ impl Wireframe {
     }
 
     pub fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer {
-        let uniform = ArtifactUniform::new([1.0, 0.0, 0.0, 1.0]);
+        let uniform = ArtifactUniform::new([0.1, 0.1, 0.1, 1.0]);
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("wireframe::uniform_buffer"),
             contents: bytemuck::cast_slice(&[uniform]),

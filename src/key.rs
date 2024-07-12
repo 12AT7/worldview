@@ -9,7 +9,7 @@ pub struct Key {
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.instance {
-            Some(u) => write!(f, "[{}] {}", u, self.artifact),
+            Some(u) => write!(f, "{}[{}]", self.artifact, u),
             None => write!(f, "{}", self.artifact)
         }
     }

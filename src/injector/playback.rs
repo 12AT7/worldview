@@ -1,14 +1,15 @@
 use crate::{InjectionEvent, Injector};
+use itertools::Itertools;
 use regex::Regex;
-use std::{env, fs, time::Duration};
+use std::{fs, path::PathBuf, time::Duration};
 use tokio::{sync::watch, time};
 use winit::event_loop::EventLoopProxy;
-use itertools::Itertools;
 
 // Playback will enumerate a directory of files with delay, simulating
 // some kind of streaming injection.
 
 pub async fn run(
+    assets_dir: PathBuf,
     injector: impl Injector,
     exit: watch::Sender<bool>,
     window_proxy: EventLoopProxy<InjectionEvent>,
@@ -17,11 +18,8 @@ pub async fn run(
     let mut exit = exit.subscribe();
 
     let re = Regex::new(r"(?<instance>.+)\.(?<artifact>.+)\.ply").unwrap();
-    let assets_dir = env::current_dir().unwrap().join("assets");
 
     loop {
-        // let mut current_instance: u32 = 0;
-
         // Iterate through the assets.  Repeat when list is exhausted.
         for path in fs::read_dir(assets_dir.clone())
             .unwrap()
@@ -36,33 +34,26 @@ pub async fn run(
             })
             .sorted()
         {
-            let key = match injector.inject(path) {
-                Some(key) => {
-                    log::info!("{}", key);
-                    key
-                },
-                None => continue
+            let key = match injector.add(path) {
+                Some(key) => key,
+                None => continue,
             };
 
             // Trigger the GUI (main) thread render the new artifact.
             window_proxy
-                .send_event(InjectionEvent::Refresh(key.clone()))
+                .send_event(InjectionEvent::Add(key.clone()))
                 .ok();
 
-            // if current_instance != key.instance {
-                // Sleep until the next frame.
-                // The interval should come from the pose timestamp.
-                interval.reset();
-                tokio::select! {
-                    _ = interval.tick() => {}
-                    Ok(_) = exit.changed() => {
-                        // Process is exiting.
-                        return
-                    }
+            // Sleep until the next frame.
+            // The interval should come from the pose timestamp.
+            interval.reset();
+            tokio::select! {
+                _ = interval.tick() => {}
+                Ok(_) = exit.changed() => {
+                    // Process is exiting.
+                    return
                 }
-            // }
-
-            // current_instance = key.instance;
+            }
         }
     }
 }

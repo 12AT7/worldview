@@ -308,7 +308,10 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: InjectionEvent) {
         match event {
-            InjectionEvent::Refresh(_key) => {
+            InjectionEvent::Add(_key) => {
+                self.window.request_redraw();
+            }
+            InjectionEvent::Remove(_key) => {
                 self.window.request_redraw();
             }
         }
@@ -327,6 +330,7 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
                     self.camera_controller.update_camera(&mut self.camera);
                     self.camera_uniform
                         .update_view_proj(&self.camera, &self.projection);
+                    self.window.request_redraw();
                 }
             }
             _ => {}
@@ -368,6 +372,10 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 self.camera_controller.process_scroll(delta);
+                self.camera_controller.update_camera(&mut self.camera);
+                self.camera_uniform
+                    .update_view_proj(&self.camera, &self.projection);
+                self.window.request_redraw();
             }
             _ => {}
         }

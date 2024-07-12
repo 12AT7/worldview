@@ -14,3 +14,4 @@ regex = "1.10.5"
 bytemuck = { version = "1.15", features = [ "derive" ] }
 itertools = "0.13.0"
 cgmath = "0.18"
+inotify = "0.10.2"

@@ -1,5 +1,5 @@
 use cgmath::{InnerSpace, Matrix4, Point3, Rad, Vector3};
-use std::time::Instant;
+// use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseScrollDelta;
 
@@ -96,7 +96,7 @@ pub struct CameraController {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
-    last_render_time: Instant,
+    // last_render_time: Instant,
 }
 
 impl CameraController {
@@ -113,7 +113,7 @@ impl CameraController {
             scroll: 0.0,
             speed: 4.0,
             sensitivity: 0.5,
-            last_render_time: Instant::now(),
+            // last_render_time: Instant::now(),
         }
     }
 
@@ -123,7 +123,6 @@ impl CameraController {
     }
 
     pub fn process_scroll(&mut self, delta: MouseScrollDelta) {
-        log::info!("scroll {:?}", delta);
         self.scroll = -match delta {
             // I'm assuming a line is about 100 pixels
             MouseScrollDelta::LineDelta(_, scroll) => scroll * 100.0,
@@ -132,11 +131,12 @@ impl CameraController {
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera) {
-        let now = Instant::now();
-        let dt = now - self.last_render_time;
-        self.last_render_time = now;
+        // let now = Instant::now();
+        // let dt = now - self.last_render_time;
+        // self.last_render_time = now;
 
-        let dt = dt.as_secs_f32();
+        // let dt = dt.as_secs_f32();
+        let dt = 0.01;
 
         // Move forward/backward and left/right
         let (yaw_sin, yaw_cos) = camera.yaw.0.sin_cos();

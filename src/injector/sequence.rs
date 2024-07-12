@@ -30,7 +30,7 @@ impl Injector for Sequence {
         self.artifacts.clone()
     }
 
-    fn inject(&self, path: PathBuf) -> Option<Key> {
+    fn add(&self, path: PathBuf) -> Option<Key> {
         let re = Regex::new(r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply").unwrap();
         let filename = path.file_name().unwrap().to_str().unwrap();
         let capture = match re.captures(filename) {
@@ -93,4 +93,26 @@ impl Injector for Sequence {
 
         Some(key)
     }
+
+    fn remove(&self, path: PathBuf) -> Option<Key> {
+        let re = Regex::new(r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply").unwrap();
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        let capture = match re.captures(filename) {
+            Some(capture) => capture,
+            None => {
+                log::error!("cannot parse {}", filename);
+                return None;
+            }
+        };
+
+        let key = Key {
+            instance: None, // capture["instance"].parse().unwrap(),
+            artifact: capture["artifact"].to_string(),
+        };
+
+        self.artifacts.lock().unwrap().remove(&key);
+
+        Some(key)
+    }
+
 }

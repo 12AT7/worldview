@@ -15,11 +15,12 @@ pub use artifact::{Artifact, RenderArtifact, ArtifactUniform};
 pub use element::Element;
 pub use window::WindowState;
 pub use camera::{Camera, Projection, CameraController, CameraUniform};
-pub use injector::{playback, Injector};
+pub use injector::{playback, inotify, Injector};
 
 #[derive(Debug)]
 pub enum InjectionEvent {
-    Refresh(Key)
+    Add(Key),
+    Remove(Key)
 }
 
 #[tokio::main(worker_threads = 4)]
@@ -27,6 +28,7 @@ async fn main() {
     std::env::set_var("RUST_LOG", "worldview=debug,wgpu_hal=warn,wgpu_core=error");
     env_logger::init();
 
+    let assets_dir = std::env::current_dir().unwrap().join("assets");
     let event_loop = EventLoop::<InjectionEvent>::with_user_event().build().unwrap();
     let injector = injector::Sequence::new();
 
@@ -38,7 +40,8 @@ async fn main() {
         let exit = exit.clone();
         let window_proxy = event_loop.create_proxy();
         async move {
-            let _ = playback::run(injector, exit, window_proxy).await;
+            // let _ = playback::run(assets_dir, injector, exit, window_proxy).await;
+            let _ = inotify::run(assets_dir, injector, exit, window_proxy).await;
         }
     });
 

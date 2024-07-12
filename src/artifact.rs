@@ -98,6 +98,7 @@ impl Artifact {
     }
 
     pub fn needs_resize(&self, header: &ply::Header) -> bool {
+        return true; // This is buggy for now.
         match self {
             Artifact::PointCloud(PointCloud { vertices }) => {
                 let count = header

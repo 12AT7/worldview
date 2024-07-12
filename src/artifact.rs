@@ -56,8 +56,7 @@ impl Artifact {
             .map(|e| (*e, header.elements.get(&e.to_string()).unwrap()))
             .collect();
 
-        // if keys == HashSet::from([Element::Vertex]) {
-        if keys.len() == 1 {
+        if keys == HashSet::from([Element::Vertex]) {
             let element_size = mem::size_of::<model::PlainVertex>();
             let count = elements.get(&Element::Vertex).unwrap().count;
             let vertices = device.create_buffer(&wgpu::BufferDescriptor {
@@ -67,17 +66,17 @@ impl Artifact {
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
+            log::info!("PointCloud {} has {:?}", key, keys);
             return Some(Artifact::PointCloud(PointCloud { vertices }));
         }
 
         // We need a discriminant for mesh vs. wireframe somehow.
-        // if keys == HashSet::from([Element::Vertex, Element::Face]) {
-        if keys.len() == 2 {
+        if keys == HashSet::from([Element::Vertex, Element::Facet]) {
             let element_size = mem::size_of::<model::PlainVertex>();
             let count = elements.get(&Element::Vertex).unwrap().count;
             let vertices = device.create_buffer(&wgpu::BufferDescriptor {
                 mapped_at_creation: false,
-                size: (4 * element_size * count) as u64,
+                size: (2 * element_size * count) as u64,
                 label: Some(&key.artifact),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
@@ -91,6 +90,7 @@ impl Artifact {
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
 
+            log::info!("Wireframe {} has {:?}", key, keys);
             return Some(Artifact::Wireframe(Wireframe { vertices, indices }));
         }
 
@@ -124,17 +124,24 @@ impl Artifact {
                 queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
             }
             Artifact::Wireframe(Wireframe { vertices, indices }) => {
+                let vertex_element = match header.elements.get(&Element::Vertex.to_string()) {
+                    Some(e) => e,
+                    None => return
+                };
+                let index_element = match header.elements.get(&Element::Facet.to_string()) {
+                    Some(e) => e,
+                    None => return
+                };
+
                 let parse = Parser::<model::PlainVertex>::new();
-                let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
                 let data = parse
-                    .read_payload_for_element(f, &element, &header)
+                    .read_payload_for_element(f, &vertex_element, &header)
                     .unwrap();
                 queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
 
                 let parse = Parser::<model::Wireframe>::new();
-                let element = header.elements.get(&Element::Facet.to_string()).unwrap();
                 let data = parse
-                    .read_payload_for_element(f, &element, &header)
+                    .read_payload_for_element(f, &index_element, &header)
                     .unwrap();
                 queue.write_buffer(&indices, 0, bytemuck::cast_slice(&data));
             }

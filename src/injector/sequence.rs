@@ -53,7 +53,15 @@ impl Injector for Sequence {
 
         let f = File::open(path).unwrap();
         let mut f = BufReader::new(f);
-        let header = parse_vertex.read_header(&mut f).unwrap();
+        let header = match parse_vertex.read_header(&mut f) {
+            Ok(h) => h,
+            Err(_) => return None
+        };
+
+        // Empty PLY files are buggy
+        if header.elements.is_empty() {
+            return None;
+        }
 
         // Remove buffers that are smaller than the new artifact.  This
         // will cause reallocation of larger buffers, immediately below.

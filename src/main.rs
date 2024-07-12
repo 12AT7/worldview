@@ -12,7 +12,7 @@ mod injector;
 
 pub use key::Key;
 pub use artifact::{Artifact, RenderArtifact, ArtifactUniform};
-pub use element::Element;
+pub use element::{Element, IntoElement};
 pub use window::WindowState;
 pub use camera::{Camera, Projection, CameraController, CameraUniform};
 pub use injector::{playback, inotify, Injector};

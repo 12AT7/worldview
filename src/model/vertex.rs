@@ -1,3 +1,4 @@
+use crate::{Element, IntoElement};
 use std::mem;
 use ply_rs::ply;
 
@@ -5,6 +6,11 @@ use ply_rs::ply;
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PlainVertex {
     pub position: [f32; 3],
+}
+
+// Teach worldview how to find the vertex in the PLY header
+impl IntoElement for PlainVertex {
+    fn element() -> Element { Element::Vertex }
 }
 
 // Teach wgpu how model a vertex.

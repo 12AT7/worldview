@@ -1,7 +1,7 @@
 use crate::{
     model,
     pipeline::{Mesh, PointCloud, Wireframe},
-    Element, Key, WindowState,
+    Element, IntoElement, Key, WindowState,
 };
 
 use ply_rs::{parser::Parser, ply};
@@ -53,7 +53,7 @@ impl Artifact {
 
         let elements: HashMap<Element, &ply::ElementDef> = keys
             .iter()
-            .map(|e| (*e, header.elements.get(&String::from(*e)).unwrap()))
+            .map(|e| (*e, header.elements.get(&e.to_string()).unwrap()))
             .collect();
 
         // if keys == HashSet::from([Element::Vertex]) {
@@ -83,7 +83,7 @@ impl Artifact {
             });
 
             let element_size = mem::size_of::<model::TriFacet>();
-            let count = elements.get(&Element::Face).unwrap().count;
+            let count = elements.get(&Element::Facet).unwrap().count;
             let indices = device.create_buffer(&wgpu::BufferDescriptor {
                 mapped_at_creation: false,
                 size: (4 * element_size * count) as u64,
@@ -98,52 +98,17 @@ impl Artifact {
     }
 
     pub fn needs_resize(&self, header: &ply::Header) -> bool {
-        return true; // This is buggy for now.
         match self {
             Artifact::PointCloud(PointCloud { vertices }) => {
-                let count = header
-                    .elements
-                    .get(&String::from(Element::Vertex))
-                    .unwrap()
-                    .count;
-                let element_size = mem::size_of::<model::PlainVertex>();
-                vertices.size() as usize <= element_size * count
+                model::PlainVertex::buffer_too_small(&header, vertices) 
             }
             Artifact::Wireframe(Wireframe { vertices, indices }) => {
-                let vertex_count = header
-                    .elements
-                    .get(&String::from(Element::Vertex))
-                    .unwrap()
-                    .count;
-                let vertex_size = mem::size_of::<model::PlainVertex>();
-
-                let index_count = header
-                    .elements
-                    .get(&String::from(Element::Face))
-                    .unwrap()
-                    .count;
-                let index_size = mem::size_of::<model::Wireframe>();
-
-                (vertices.size() as usize <= vertex_size * vertex_count)
-                    || (indices.size() as usize <= index_size * index_count)
+                model::PlainVertex::buffer_too_small(&header, vertices) || 
+                    model::Wireframe::buffer_too_small(&header, indices)
             }
             Artifact::Mesh(Mesh { vertices, indices }) => {
-                let vertex_count = header
-                    .elements
-                    .get(&String::from(Element::Vertex))
-                    .unwrap()
-                    .count;
-                let vertex_size = mem::size_of::<model::PlainVertex>();
-
-                let index_count = header
-                    .elements
-                    .get(&String::from(Element::Face))
-                    .unwrap()
-                    .count;
-                let index_size = 12;
-
-                (vertices.size() as usize <= vertex_size * vertex_count)
-                    || (indices.size() as usize <= index_size * index_count)
+                model::PlainVertex::buffer_too_small(&header, vertices) || 
+                    model::Wireframe::buffer_too_small(&header, indices)
             }
         }
     }
@@ -152,7 +117,7 @@ impl Artifact {
         match self {
             Artifact::PointCloud(PointCloud { vertices }) => {
                 let parse = Parser::<model::PlainVertex>::new();
-                let element = header.elements.get(&String::from(Element::Vertex)).unwrap();
+                let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
                 let data = parse
                     .read_payload_for_element(f, &element, &header)
                     .unwrap();
@@ -160,14 +125,14 @@ impl Artifact {
             }
             Artifact::Wireframe(Wireframe { vertices, indices }) => {
                 let parse = Parser::<model::PlainVertex>::new();
-                let element = header.elements.get(&String::from(Element::Vertex)).unwrap();
+                let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
                 let data = parse
                     .read_payload_for_element(f, &element, &header)
                     .unwrap();
                 queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
 
                 let parse = Parser::<model::Wireframe>::new();
-                let element = header.elements.get(&String::from(Element::Face)).unwrap();
+                let element = header.elements.get(&Element::Facet.to_string()).unwrap();
                 let data = parse
                     .read_payload_for_element(f, &element, &header)
                     .unwrap();
@@ -175,14 +140,14 @@ impl Artifact {
             }
             Artifact::Mesh(Mesh { vertices, indices }) => {
                 let parse = Parser::<model::PlainVertex>::new();
-                let element = header.elements.get(&String::from(Element::Vertex)).unwrap();
+                let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
                 let data = parse
                     .read_payload_for_element(f, &element, &header)
                     .unwrap();
                 queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
 
                 let parse = Parser::<model::TriFacet>::new();
-                let element = header.elements.get(&String::from(Element::Face)).unwrap();
+                let element = header.elements.get(&Element::Facet.to_string()).unwrap();
                 let data = parse
                     .read_payload_for_element(f, &element, &header)
                     .unwrap();

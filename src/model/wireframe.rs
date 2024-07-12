@@ -1,9 +1,15 @@
+use crate::{Element, IntoElement};
 use ply_rs::ply;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Wireframe {
     pub vertex_indices: [i32; 6],
+}
+//
+// Teach worldview how to find the vertex in the PLY header
+impl IntoElement for Wireframe {
+    fn element() -> Element { Element::Facet }
 }
 
 // Teach ply_rs how model a wireframe facet.

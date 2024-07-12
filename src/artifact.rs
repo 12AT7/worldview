@@ -56,23 +56,8 @@ impl Artifact {
             .map(|e| (*e, header.elements.get(&String::from(*e)).unwrap()))
             .collect();
 
-        // log::debug!("{} has elements {:?}", key, elements.keys());
         // if keys == HashSet::from([Element::Vertex]) {
-        //     let element_size = mem::size_of::<model::PlainVertex>();
-        //     let count = elements.get(&Element::Vertex).unwrap().count;
-        //     let vertices = device.create_buffer(&wgpu::BufferDescriptor {
-        //         mapped_at_creation: false,
-        //         size: (2 * element_size * count) as u64,
-        //         label: Some(&key.artifact),
-        //         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        //     });
-
-        //     return Some(Artifact::PointCloud(PointCloud { vertices }));
-        // }
-
-        // // We need a discriminant for mesh vs. wireframe somehow.
-        // if keys == HashSet::from([Element::Vertex, Element::Face]) 
-        {
+        if keys.len() == 1 {
             let element_size = mem::size_of::<model::PlainVertex>();
             let count = elements.get(&Element::Vertex).unwrap().count;
             let vertices = device.create_buffer(&wgpu::BufferDescriptor {
@@ -82,11 +67,26 @@ impl Artifact {
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
+            return Some(Artifact::PointCloud(PointCloud { vertices }));
+        }
+
+        // We need a discriminant for mesh vs. wireframe somehow.
+        // if keys == HashSet::from([Element::Vertex, Element::Face]) {
+        if keys.len() == 2 {
+            let element_size = mem::size_of::<model::PlainVertex>();
+            let count = elements.get(&Element::Vertex).unwrap().count;
+            let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+                mapped_at_creation: false,
+                size: (4 * element_size * count) as u64,
+                label: Some(&key.artifact),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            });
+
             let element_size = mem::size_of::<model::TriFacet>();
             let count = elements.get(&Element::Face).unwrap().count;
             let indices = device.create_buffer(&wgpu::BufferDescriptor {
                 mapped_at_creation: false,
-                size: (2 * element_size * count) as u64,
+                size: (4 * element_size * count) as u64,
                 label: Some(&key.artifact),
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });

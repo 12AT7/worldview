@@ -42,7 +42,7 @@ impl Injector for Sequence {
         };
 
         let key = Key {
-            instance: None, // capture["instance"].parse().unwrap(),
+            instance: None,
             artifact: capture["artifact"].to_string(),
         };
 
@@ -106,7 +106,7 @@ impl Injector for Sequence {
         };
 
         let key = Key {
-            instance: None, // capture["instance"].parse().unwrap(),
+            instance: None,
             artifact: capture["artifact"].to_string(),
         };
 

@@ -21,12 +21,6 @@ pub trait RenderArtifact {
     fn create_pipeline(device: &wgpu::Device, playback: &WindowState) -> wgpu::RenderPipeline;
 
     fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer;
-
-    // fn render<'rpass>(
-    //     vertices: &'rpass wgpu::Buffer,
-    //     state: &'rpass WindowState,
-    //     render_pass: &mut wgpu::RenderPass<'rpass>,
-    // );
 }
 
 #[repr(C)]
@@ -62,6 +56,7 @@ impl Artifact {
             .map(|e| (*e, header.elements.get(&String::from(*e)).unwrap()))
             .collect();
 
+        log::debug!("{} has elements {:?}", key, elements.keys());
         if keys == HashSet::from([Element::Vertex]) {
             let element_size = mem::size_of::<model::PlainVertex>();
             let count = elements.get(&Element::Vertex).unwrap().count;

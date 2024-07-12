@@ -13,7 +13,7 @@ pub use sequence::Sequence;
 // rendering thread.
 
 pub trait Injector {
-    fn add(&self, path: PathBuf) -> Option<Key>;
-    fn remove(&self, path: PathBuf) -> Option<Key>;
+    fn add(&self, path: &PathBuf) -> Option<Key>;
+    fn remove(&self, path: &PathBuf) -> Option<Key>;
     fn get_artifacts(&self) -> Arc<Mutex<HashMap<Key, Artifact>>>;
 }

@@ -1,17 +1,10 @@
-use crate::{InjectionEvent, Injector};
 use inotify::{EventMask, Inotify, WatchMask};
 use std::{fs, path::PathBuf};
-use tokio::sync::watch;
-use winit::event_loop::EventLoopProxy;
+use tokio::sync::{watch, mpsc};
 
 // INotify will inject into the visualization, all new files that appear.
 
-pub async fn run(
-    assets_dir: PathBuf,
-    injector: impl Injector,
-    exit: watch::Sender<bool>,
-    window_proxy: EventLoopProxy<InjectionEvent>,
-) {
+pub async fn run(assets_dir: PathBuf, tx: mpsc::Sender<PathBuf>, exit: watch::Sender<bool>) {
     let mut inotify = Inotify::init().unwrap();
     inotify
         .watches()
@@ -49,39 +42,24 @@ pub async fn run(
 
     // Read events that were added with `Watches::add` above.
     tokio::task::block_in_place(move || {
-        let mut buffer = [0; 1024];
-        loop {
-            let events = inotify.read_events_blocking(&mut buffer).unwrap();
-            for event in events {
-                // Check the exit sentinel for a clean exit.
-                if event.name == Some(sentinel_path.file_name().unwrap()) {
-                    return;
-                }
+            let mut buffer = [0; 1024];
+            loop {
+                let events = inotify.read_events_blocking(&mut buffer).unwrap();
+                for event in events {
+                    // Check the exit sentinel for a clean exit.
+                    if event.name == Some(sentinel_path.file_name().unwrap()) {
+                        return;
+                    }
 
-                let mut path = assets_dir.clone();
-                path.push(event.name.unwrap());
+                    let mut path = assets_dir.clone();
+                    path.push(event.name.unwrap());
 
-                match event.mask {
-                    EventMask::CLOSE_WRITE => {
-                        let key = match injector.add(path) {
-                            Some(key) => key,
-                            None => continue,
-                        };
-                        // log::info!("Add {}", key);
-                        window_proxy.send_event(InjectionEvent::Add(key)).ok();
-                    }
-                    EventMask::DELETE => {
-                        let key = match injector.remove(path) {
-                            Some(key) => key,
-                            None => continue,
-                        };
-                        log::info!("Remove {}", key);
-                        window_proxy.send_event(InjectionEvent::Remove(key)).ok();
-                    }
-                    _ => {
-                    }
+                    match event.mask {
+                        EventMask::CLOSE_WRITE => tx.blocking_send(path.clone()).expect("loader not running"), // injector.add(&path),
+                        EventMask::DELETE => tx.blocking_send(path.clone()).expect("loader not running"), // injector.remove(&path),
+                        _ => {},
+                    };
                 }
             }
-        }
     });
 }

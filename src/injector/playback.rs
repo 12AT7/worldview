@@ -34,7 +34,7 @@ pub async fn run(
             })
             .sorted()
         {
-            let key = match injector.add(path) {
+            let key = match injector.add(&path) {
                 Some(key) => key,
                 None => continue,
             };

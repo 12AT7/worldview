@@ -43,6 +43,11 @@ pub enum Artifact {
 
 impl Artifact {
     pub fn new(device: &wgpu::Device, key: &Key, header: &ply::Header) -> Option<Artifact> {
+        if header.elements.get(&Element::Vertex.to_string()).unwrap().count == 0 {
+            log::warn!("{} is empty; rejecting it", key);
+            return None;
+        }
+
         // Interrogate the header to figure out if we have a point cloud,
         // mesh, or something else.
         let keys: HashSet<Element> = header

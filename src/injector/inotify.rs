@@ -67,7 +67,7 @@ pub async fn run(
                             Some(key) => key,
                             None => continue,
                         };
-                        log::info!("Add {}", key);
+                        // log::info!("Add {}", key);
                         window_proxy.send_event(InjectionEvent::Add(key)).ok();
                     }
                     EventMask::DELETE => {

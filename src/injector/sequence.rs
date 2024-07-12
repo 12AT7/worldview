@@ -35,6 +35,7 @@ impl Injector for Sequence {
 
         let re = Regex::new(r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply").unwrap();
         let filename = path.file_name().unwrap().to_str().unwrap();
+        log::info!("Add {}", filename);
         let capture = match re.captures(filename) {
             Some(capture) => capture,
             None => {

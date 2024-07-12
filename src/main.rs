@@ -28,7 +28,7 @@ async fn main() {
     std::env::set_var("RUST_LOG", "worldview=debug,wgpu_hal=warn,wgpu_core=error");
     env_logger::init();
 
-    let assets_dir = std::env::current_dir().unwrap().join("assets");
+    let assets_dir = std::env::current_dir().unwrap(); // Should be a flag.
     let event_loop = EventLoop::<InjectionEvent>::with_user_event().build().unwrap();
     let injector = injector::Sequence::new();
 

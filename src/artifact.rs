@@ -56,22 +56,23 @@ impl Artifact {
             .map(|e| (*e, header.elements.get(&String::from(*e)).unwrap()))
             .collect();
 
-        log::debug!("{} has elements {:?}", key, elements.keys());
-        if keys == HashSet::from([Element::Vertex]) {
-            let element_size = mem::size_of::<model::PlainVertex>();
-            let count = elements.get(&Element::Vertex).unwrap().count;
-            let vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                mapped_at_creation: false,
-                size: (2 * element_size * count) as u64,
-                label: Some(&key.artifact),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
+        // log::debug!("{} has elements {:?}", key, elements.keys());
+        // if keys == HashSet::from([Element::Vertex]) {
+        //     let element_size = mem::size_of::<model::PlainVertex>();
+        //     let count = elements.get(&Element::Vertex).unwrap().count;
+        //     let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+        //         mapped_at_creation: false,
+        //         size: (2 * element_size * count) as u64,
+        //         label: Some(&key.artifact),
+        //         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        //     });
 
-            return Some(Artifact::PointCloud(PointCloud { vertices }));
-        }
+        //     return Some(Artifact::PointCloud(PointCloud { vertices }));
+        // }
 
-        // We need a discriminant for mesh vs. wireframe somehow.
-        if keys == HashSet::from([Element::Vertex, Element::Face]) {
+        // // We need a discriminant for mesh vs. wireframe somehow.
+        // if keys == HashSet::from([Element::Vertex, Element::Face]) 
+        {
             let element_size = mem::size_of::<model::PlainVertex>();
             let count = elements.get(&Element::Vertex).unwrap().count;
             let vertices = device.create_buffer(&wgpu::BufferDescriptor {

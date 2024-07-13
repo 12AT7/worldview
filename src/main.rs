@@ -1,4 +1,4 @@
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use winit::event_loop::EventLoop;
 
 mod model;
@@ -9,7 +9,6 @@ mod artifact;
 mod element;
 mod camera;
 mod injector;
-mod loader;
 
 pub use key::Key;
 pub use artifact::{Artifact, RenderArtifact, ArtifactUniform};
@@ -35,23 +34,13 @@ async fn main() {
 
     // Signal all async tasks return for a clean process exit.
     let (exit, _) = watch::channel(false);
-    let (tx, rx) = mpsc::channel(100);
 
     let injector_task = tokio::spawn({
-        let tx = tx.clone();
+        let injector = injector.clone();
         let exit = exit.clone();
         async move {
             // let _ = playback::run(assets_dir, injector, exit).await;
-            let _ = inotify::run(assets_dir, tx, exit).await;
-        }
-    });
-
-    let loader_task = tokio::spawn({
-        let artifacts = injector.artifacts.clone();
-        let exit = exit.clone();
-        let event_loop_proxy = event_loop.create_proxy();
-        async move {
-            let _ = loader::run(artifacts, rx, event_loop_proxy, exit).await;
+            let _ = inotify::run(assets_dir, injector, exit).await;
         }
     });
 
@@ -60,5 +49,4 @@ async fn main() {
     log::info!("Worldview Exit");
 
     injector_task.await.unwrap();
-    loader_task.await.unwrap();
 }

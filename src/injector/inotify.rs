@@ -1,10 +1,11 @@
+use crate::Injector;
 use inotify::{EventMask, Inotify, WatchMask};
 use std::{fs, path::PathBuf};
-use tokio::sync::{watch, mpsc};
+use tokio::sync::watch;
 
 // INotify will inject into the visualization, all new files that appear.
 
-pub async fn run(assets_dir: PathBuf, tx: mpsc::Sender<PathBuf>, exit: watch::Sender<bool>) {
+pub async fn run(assets_dir: PathBuf, injector: impl Injector, exit: watch::Sender<bool>) {
     let mut inotify = Inotify::init().unwrap();
     inotify
         .watches()
@@ -55,9 +56,9 @@ pub async fn run(assets_dir: PathBuf, tx: mpsc::Sender<PathBuf>, exit: watch::Se
                     path.push(event.name.unwrap());
 
                     match event.mask {
-                        EventMask::CLOSE_WRITE => tx.blocking_send(path.clone()).expect("loader not running"), // injector.add(&path),
-                        EventMask::DELETE => tx.blocking_send(path.clone()).expect("loader not running"), // injector.remove(&path),
-                        _ => {},
+                        EventMask::CLOSE_WRITE => injector.add(&path),
+                        EventMask::DELETE => injector.remove(&path),
+                        _ => None,
                     };
                 }
             }

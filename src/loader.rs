@@ -1,7 +1,6 @@
 use crate::{
     window::{DEVICE, QUEUE},
-    Artifact, Key,
-    InjectionEvent
+    Artifact, InjectionEvent, Key
 };
 use ply_rs::{parser::Parser, ply};
 use regex::Regex;
@@ -12,8 +11,8 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use winit::event_loop::EventLoopProxy;
 use tokio::sync::{mpsc, watch};
+use winit::event_loop::EventLoopProxy;
 
 const PLY_RE: &'static str = r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply";
 
@@ -27,7 +26,7 @@ pub async fn run(
 
     loop {
         tokio::select! {
-            _ = exit.changed() => return, 
+            _ = exit.changed() => return,
             path = rx.recv() => {
                 load(artifacts.clone(), path.unwrap(), &event_loop_proxy).await;
             }
@@ -35,9 +34,11 @@ pub async fn run(
     }
 }
 
-async fn load(artifacts: Arc<Mutex<HashMap<Key, Artifact>>>, path: PathBuf, event_loop_proxy: &EventLoopProxy<InjectionEvent>
-)
-{
+async fn load(
+    artifacts: Arc<Mutex<HashMap<Key, Artifact>>>,
+    path: PathBuf,
+    event_loop_proxy: &EventLoopProxy<InjectionEvent>,
+) {
     let ply_re = Regex::new(PLY_RE).expect("invalid regex");
     let parse_header = Parser::<ply::DefaultElement>::new();
 
@@ -100,10 +101,12 @@ async fn load(artifacts: Arc<Mutex<HashMap<Key, Artifact>>>, path: PathBuf, even
         };
     }
 
-    log::info!("load {}", key);
-    let artifact = artifacts.get(&key).unwrap();
+    let artifact = artifacts.get_mut(&key).unwrap();
+    artifact.update_count(&header);
     let queue = QUEUE.get().unwrap(); // Will succeed if DEVICE did.
     artifact.write_buffer(queue, &mut f, &header);
     queue.submit([]);
-    event_loop_proxy.send_event(InjectionEvent::Add(key.clone())).ok();
+    event_loop_proxy
+        .send_event(InjectionEvent::Add(key.clone()))
+        .ok();
 }

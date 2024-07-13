@@ -271,17 +271,13 @@ impl<'win> WindowState<'win> {
                 render_pass.set_bind_group(1, &self.artifact_bind_group.get(key).unwrap(), &[]);
                 match artifact {
                     Artifact::PointCloud(point_cloud) => {
-                        pipeline::PointCloud::render(&point_cloud.vertices, &mut render_pass);
+                        point_cloud.render(&mut render_pass);
                     }
                     Artifact::Wireframe(wireframe) => {
-                        pipeline::Wireframe::render(
-                            &wireframe.vertices,
-                            &wireframe.indices,
-                            &mut render_pass,
-                        );
+                        wireframe.render(&mut render_pass);
                     }
                     Artifact::Mesh(mesh) => {
-                        pipeline::Mesh::render(&mesh.vertices, &mesh.indices, &mut render_pass);
+                        mesh.render(&mut render_pass);
                     }
                 }
             }

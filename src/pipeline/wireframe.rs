@@ -1,10 +1,11 @@
-use crate::{model, WindowState, ArtifactUniform};
-
+use crate::{model, ArtifactUniform, Element, WindowState};
+use ply_rs::ply;
 use wgpu::util::DeviceExt;
 
 pub struct Wireframe {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
+    pub num_lines: u32,
 }
 
 impl Wireframe {
@@ -66,14 +67,18 @@ impl Wireframe {
         })
     }
 
-    pub fn render<'rpass>(
-        vertices: &'rpass wgpu::Buffer,
-        indices: &'rpass wgpu::Buffer,
-        render_pass: &mut wgpu::RenderPass<'rpass>,
-    ) {
-        let num_lines = indices.size() / 8 as u64;
-        render_pass.set_vertex_buffer(0, vertices.slice(..));
-        render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        render_pass.draw_indexed(0..num_lines as u32, 0, 0..1);
+    pub fn update_count(&mut self, header: &ply::Header) {
+        self.num_lines = header
+            .elements
+            .get(&Element::Facet.to_string())
+            .unwrap()
+            .count as u32
+            * 3; // three lines per facet
+    }
+
+    pub fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>) {
+        render_pass.set_vertex_buffer(0, self.vertices.slice(..));
+        render_pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        render_pass.draw_indexed(0..self.num_lines, 0, 0..1);
     }
 }

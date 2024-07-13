@@ -1,6 +1,4 @@
 use std::{collections::HashMap, sync::OnceLock};
-
-use tokio::sync::watch;
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
@@ -12,8 +10,8 @@ use winit::{
 };
 
 use crate::{
-    injector::Sequence, pipeline, Artifact, Camera, CameraController, CameraUniform,
-    InjectionEvent, Injector, Projection, RenderArtifact,
+    inject::Sequence, pipeline, Artifact, Camera, CameraController, CameraUniform, InjectionEvent,
+    Injector, Projection, RenderArtifact,
 };
 
 // The playback thread needs to load GPU buffers, and for that it
@@ -30,7 +28,6 @@ pub struct WindowState<'win> {
     surface: wgpu::Surface<'win>,
     window: &'win Window,
     injector: Sequence,
-    exit: watch::Sender<bool>,
     pub surface_capabilities: wgpu::SurfaceCapabilities,
     pub point_cloud_pipeline_layout: wgpu::PipelineLayout,
     pub wireframe_pipeline_layout: wgpu::PipelineLayout,
@@ -52,7 +49,6 @@ impl<'win> WindowState<'win> {
     pub async fn new(
         window: &'win Window,
         injector: Sequence,
-        exit: watch::Sender<bool>,
     ) -> WindowState<'win> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -157,7 +153,6 @@ impl<'win> WindowState<'win> {
             surface,
             window,
             injector,
-            exit,
             surface_capabilities,
             point_cloud_pipeline_layout,
             wireframe_pipeline_layout,
@@ -351,7 +346,6 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
                 ..
             } => {
                 event_loop.exit();
-                self.exit.send(true).unwrap();
             }
             WindowEvent::Resized(size) => {
                 self.resize(size);
@@ -381,12 +375,11 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
 pub async fn run(
     injector: Sequence,
     event_loop: EventLoop<InjectionEvent>,
-    exit: watch::Sender<bool>,
 ) {
     let window = event_loop
         .create_window(WindowAttributes::default())
         .unwrap();
 
-    let mut app = WindowState::new(&window, injector, exit).await;
+    let mut app = WindowState::new(&window, injector).await;
     let _ = event_loop.run_app(&mut app);
 }

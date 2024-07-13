@@ -3,7 +3,6 @@ use crate::{
     window::{DEVICE, QUEUE},
     Artifact, Injector, Key,
 };
-use tokio::sync::mpsc;
 use winit::event_loop::EventLoopProxy;
 use ply_rs::{parser::Parser, ply};
 use regex::Regex;
@@ -25,18 +24,14 @@ const PLY_RE: &'static str = r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply";
 pub struct Sequence {
     pub artifacts: Arc<Mutex<HashMap<Key, Artifact>>>,
     pub ply_re: Regex,
-    tx: mpsc::Sender<PathBuf>,
     event_loop_proxy: EventLoopProxy<InjectionEvent>
 }
 
 impl Sequence {
     pub fn new(event_loop_proxy: EventLoopProxy<InjectionEvent>) -> Sequence {
-        let (tx, _) = mpsc::channel(100);
-
         Sequence {
             artifacts: Arc::new(Mutex::new(HashMap::new())),
             ply_re: Regex::new(PLY_RE).expect("invalid regex"),
-            tx,
             event_loop_proxy
         }
     }
@@ -89,7 +84,7 @@ impl Sequence {
             };
         }
 
-        let mut artifact = artifacts.get_mut(&key).unwrap();
+        let artifact = artifacts.get_mut(&key).unwrap();
         artifact.update_count(&header);
         let queue = QUEUE.get().unwrap(); // Will succeed if DEVICE did.
         artifact.write_buffer(queue, &mut f, &header);
@@ -122,7 +117,6 @@ impl Injector for Sequence {
         };
 
         log::info!("Enqueue {}", key);
-        // self.tx.blocking_send(path.clone()).expect("injection worker not running");
         self.inject(key.clone(), path);
         Some(key)
     }

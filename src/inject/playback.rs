@@ -1,9 +1,8 @@
-use crate::{InjectionEvent, Injector};
+use crate::Injector;
 use itertools::Itertools;
 use regex::Regex;
 use std::{fs, path::PathBuf, time::Duration};
 use tokio::{sync::watch, time};
-use winit::event_loop::EventLoopProxy;
 
 // Playback will enumerate a directory of files with delay, simulating
 // some kind of streaming injection.
@@ -11,10 +10,10 @@ use winit::event_loop::EventLoopProxy;
 pub async fn run(
     assets_dir: PathBuf,
     injector: impl Injector,
+    delay: Duration,
     exit: watch::Sender<bool>,
-    window_proxy: EventLoopProxy<InjectionEvent>,
 ) {
-    let mut interval = time::interval(Duration::from_millis(100));
+    let mut interval = time::interval(delay);
     let mut exit = exit.subscribe();
 
     let re = Regex::new(r"(?<instance>.+)\.(?<artifact>.+)\.ply").unwrap();
@@ -34,15 +33,9 @@ pub async fn run(
             })
             .sorted()
         {
-            let key = match injector.add(&path) {
-                Some(key) => key,
-                None => continue,
-            };
-
-            // Trigger the GUI (main) thread render the new artifact.
-            window_proxy
-                .send_event(InjectionEvent::Add(key.clone()))
-                .ok();
+            if injector.add(&path).is_none() {
+                continue;
+            }
 
             // Sleep until the next frame.
             // The interval should come from the pose timestamp.

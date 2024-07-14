@@ -1,18 +1,20 @@
 use cgmath::{InnerSpace, Matrix4, Point3, Rad, Vector3};
-// use std::time::Instant;
-use winit::dpi::PhysicalPosition;
-use winit::event::MouseScrollDelta;
+use std::time::Instant;
+use winit::{dpi, event::MouseScrollDelta};
 
 // These calculations are mostly copied straight from this lifesaving
 // tutorial: 
 //
 // https://sotrh.github.io/learn-wgpu/intermediate/tutorial12-camera/
 //
-// Thank you!
+// Thank you!  I modified the implementation mostly just to experiment,
+// document, and learn how it works.
 
 use std::f32::consts::FRAC_PI_2;
 const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.0001;
 
+// Camera is the CPU side camera model that plays nice with the camera
+// controller.
 #[derive(Debug)]
 pub struct Camera {
     position: Point3<f32>,
@@ -20,6 +22,8 @@ pub struct Camera {
     pitch: Rad<f32>,
 }
 
+// CameraUniform is the GPU side camera model + projection matrix used by 
+// the vertex shaders.
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
@@ -27,16 +31,18 @@ pub struct CameraUniform {
     view_proj: [[f32; 4]; 4],
 }
 
-impl Camera {
-    pub fn new() -> Self {
+impl Default for Camera {
+    fn default() -> Camera {
         // Choose some nominally useful initial pose.
-        Self {
+        Camera {
             position: (0.0, 5.0, 10.0).into(),
             yaw: cgmath::Deg(-90.0).into(),
             pitch: cgmath::Deg(-30.0).into(),
         }
     }
+}
 
+impl Camera {
     pub fn calc_matrix(&self) -> Matrix4<f32> {
         let (sin_pitch, cos_pitch) = self.pitch.0.sin_cos();
         let (sin_yaw, cos_yaw) = self.yaw.0.sin_cos();
@@ -57,12 +63,12 @@ pub struct Projection {
 }
 
 impl Projection {
-    pub fn new<F: Into<Rad<f32>>>(width: u32, height: u32, fovy: F, znear: f32, zfar: f32) -> Self {
+    pub fn default(size: dpi::PhysicalSize<u32>) -> Self {
         Self {
-            aspect: width as f32 / height as f32,
-            fovy: fovy.into(),
-            znear,
-            zfar,
+            aspect: size.width as f32 / size.height as f32,
+            fovy: cgmath::Deg(45.0).into(),
+            znear: 0.1,
+            zfar: 100.0,
         }
     }
 
@@ -96,7 +102,7 @@ pub struct CameraController {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
-    // last_render_time: Instant,
+    last_render_time: Instant,
 }
 
 impl CameraController {
@@ -113,7 +119,7 @@ impl CameraController {
             scroll: 0.0,
             speed: 4.0,
             sensitivity: 0.5,
-            // last_render_time: Instant::now(),
+            last_render_time: Instant::now(),
         }
     }
 
@@ -126,17 +132,16 @@ impl CameraController {
         self.scroll = -match delta {
             // I'm assuming a line is about 100 pixels
             MouseScrollDelta::LineDelta(_, scroll) => scroll * 100.0,
-            MouseScrollDelta::PixelDelta(PhysicalPosition { y: scroll, .. }) => scroll as f32,
+            MouseScrollDelta::PixelDelta(dpi::PhysicalPosition { y: scroll, .. }) => scroll as f32,
         };
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera) {
-        // let now = Instant::now();
-        // let dt = now - self.last_render_time;
-        // self.last_render_time = now;
+        let now = Instant::now();
+        let dt = now - self.last_render_time;
+        self.last_render_time = now;
 
-        // let dt = dt.as_secs_f32();
-        let dt = 0.01;
+        let dt = dt.as_secs_f32();
 
         // Move forward/backward and left/right
         let (yaw_sin, yaw_cos) = camera.yaw.0.sin_cos();

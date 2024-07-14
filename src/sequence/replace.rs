@@ -82,7 +82,7 @@ impl Replace {
                 }
             };
 
-            match Artifact::new(&device, &key, &header) {
+            match Artifact::new(&device, &header) {
                 Some(artifact) => {
                     artifacts.insert(key.clone(), artifact);
                     log::debug!("Allocated artifact {}", key)

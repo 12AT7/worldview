@@ -1,15 +1,11 @@
 use crate::{
-    model,
     pipeline::{Mesh, PointCloud, Wireframe},
-    Element, IntoElement, Key, WindowState,
+    WindowState,
 };
 
-use ply_rs::{parser::Parser, ply};
-use std::{
-    collections::{HashMap, HashSet},
-    io::BufRead,
-    mem,
-};
+use std::io::BufRead;
+
+use ply_rs::ply;
 
 pub trait RenderArtifact {
     fn update_count(&mut self, header: &ply::Header);
@@ -22,7 +18,12 @@ pub trait RenderArtifact {
     fn create_pipeline(device: &wgpu::Device, playback: &WindowState) -> wgpu::RenderPipeline;
 
     fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer;
+    fn needs_resize(&self, header: &ply::Header) -> bool;
+    fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header);
+
+    fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>);
 }
+
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -43,61 +44,14 @@ pub enum Artifact {
 }
 
 impl Artifact {
-    pub fn new(device: &wgpu::Device, key: &Key, header: &ply::Header) -> Option<Artifact> {
-        // Interrogate the header to figure out if we have a point cloud,
-        // mesh, or something else.
-        let keys: HashSet<Element> = header
-            .elements
-            .keys()
-            .filter_map(|key| Element::from(key))
-            .collect();
-
-        let elements: HashMap<Element, &ply::ElementDef> = keys
-            .iter()
-            .map(|e| (*e, header.elements.get(&e.to_string()).unwrap()))
-            .collect();
-
-        if keys == HashSet::from([Element::Vertex]) {
-            let element_size = mem::size_of::<model::PlainVertex>();
-            let count = elements.get(&Element::Vertex).unwrap().count;
-            let vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                mapped_at_creation: false,
-                size: (2 * element_size * count) as u64,
-                label: Some(&key.artifact),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            return Some(Artifact::PointCloud(PointCloud {
-                vertices,
-                num_vertices: count as u32,
-            }));
+    pub fn new(device: &wgpu::Device, header: &ply::Header) -> Option<Artifact> {
+        // Detect which artifact type we want to show, given the PLY header.
+        if let Some(wireframe) = Wireframe::new(&device, &header) {
+            return Some(Artifact::Wireframe(wireframe));
         }
 
-        // We need a discriminant for mesh vs. wireframe somehow.
-        if keys == HashSet::from([Element::Vertex, Element::Facet]) {
-            let element_size = mem::size_of::<model::PlainVertex>();
-            let count = elements.get(&Element::Vertex).unwrap().count;
-            let vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                mapped_at_creation: false,
-                size: (2 * element_size * count) as u64,
-                label: Some(&key.artifact),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            let element_size = mem::size_of::<model::TriFacet>();
-            let count = elements.get(&Element::Facet).unwrap().count;
-            let indices = device.create_buffer(&wgpu::BufferDescriptor {
-                mapped_at_creation: false,
-                size: (4 * element_size * count) as u64,
-                label: Some(&key.artifact),
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            });
-
-            return Some(Artifact::Wireframe(Wireframe {
-                vertices,
-                indices,
-                num_lines: count as u32 / 2,
-            }));
+        if let Some(point_cloud) = PointCloud::new(&device, &header) {
+            return Some(Artifact::PointCloud(point_cloud));
         }
 
         None
@@ -105,75 +59,17 @@ impl Artifact {
 
     pub fn needs_resize(&self, header: &ply::Header) -> bool {
         match self {
-            Artifact::PointCloud(PointCloud { vertices, .. }) => {
-                model::PlainVertex::buffer_too_small(&header, vertices)
-            }
-            Artifact::Wireframe(Wireframe {
-                vertices, indices, ..
-            }) => {
-                model::PlainVertex::buffer_too_small(&header, vertices)
-                    || model::Wireframe::buffer_too_small(&header, indices)
-            }
-            Artifact::Mesh(Mesh {
-                vertices, indices, ..
-            }) => {
-                model::PlainVertex::buffer_too_small(&header, vertices)
-                    || model::Wireframe::buffer_too_small(&header, indices)
-            }
+            Artifact::PointCloud(point_cloud) => point_cloud.needs_resize(&header),
+            Artifact::Mesh(mesh) => mesh.needs_resize(&header),
+            Artifact::Wireframe(wireframe) => wireframe.needs_resize(&header),
         }
     }
 
     pub fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header) {
         match self {
-            Artifact::PointCloud(PointCloud { vertices, .. }) => {
-                let parse = Parser::<model::PlainVertex>::new();
-                let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
-                let data = parse
-                    .read_payload_for_element(f, &element, &header)
-                    .unwrap();
-                queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
-            }
-            Artifact::Wireframe(Wireframe {
-                vertices, indices, ..
-            }) => {
-                let vertex_element = match header.elements.get(&Element::Vertex.to_string()) {
-                    Some(e) => e,
-                    None => return,
-                };
-                let index_element = match header.elements.get(&Element::Facet.to_string()) {
-                    Some(e) => e,
-                    None => return,
-                };
-
-                let parse = Parser::<model::PlainVertex>::new();
-                let data = parse
-                    .read_payload_for_element(f, &vertex_element, &header)
-                    .unwrap();
-                queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
-
-                let parse = Parser::<model::Wireframe>::new();
-                let data = parse
-                    .read_payload_for_element(f, &index_element, &header)
-                    .unwrap();
-                queue.write_buffer(&indices, 0, bytemuck::cast_slice(&data));
-            }
-            Artifact::Mesh(Mesh {
-                vertices, indices, ..
-            }) => {
-                let parse = Parser::<model::PlainVertex>::new();
-                let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
-                let data = parse
-                    .read_payload_for_element(f, &element, &header)
-                    .unwrap();
-                queue.write_buffer(&vertices, 0, bytemuck::cast_slice(&data));
-
-                let parse = Parser::<model::TriFacet>::new();
-                let element = header.elements.get(&Element::Facet.to_string()).unwrap();
-                let data = parse
-                    .read_payload_for_element(f, &element, &header)
-                    .unwrap();
-                queue.write_buffer(&indices, 0, bytemuck::cast_slice(&data));
-            }
+            Artifact::PointCloud(point_cloud) => point_cloud.write_buffer(&queue, f, &header),
+            Artifact::Wireframe(wireframe) => wireframe.write_buffer(&queue, f, &header),
+            Artifact::Mesh(mesh) => mesh.write_buffer(&queue, f, &header),
         }
     }
 

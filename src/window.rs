@@ -5,7 +5,7 @@ use winit::{
     dpi,
     event::*,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
+    keyboard::{Key, NamedKey},
     window::{Window, WindowAttributes, WindowId},
 };
 
@@ -14,8 +14,8 @@ use crate::{
     Projection, RenderArtifact,
 };
 
-// The playback thread needs to load GPU buffers, and for that it
-// needs the device and queue from the wgpu state.  Because threads
+// The dependency injection thread needs to load GPU buffers, and for that
+// it needs the device and queue from the wgpu state.  Because threads
 // can only take 'static lifetime references, and we don't even have a
 // wgpu surface until the window is created, sharing these references
 // is a PITA.  They are not Serialize either, so we cannot even use an
@@ -23,6 +23,11 @@ use crate::{
 // variables so any thread can get these critical objects.
 pub static DEVICE: OnceLock<wgpu::Device> = OnceLock::new();
 pub static QUEUE: OnceLock<wgpu::Queue> = OnceLock::new();
+
+enum ControlState {
+    Inactive,
+    DragAngle,
+}
 
 pub struct WindowState<'win> {
     surface: wgpu::Surface<'win>,
@@ -42,7 +47,7 @@ pub struct WindowState<'win> {
     camera_uniform: CameraUniform,
     camera_controller: CameraController,
     projection: Projection,
-    mouse_pressed: bool,
+    control_state: ControlState,
 }
 
 impl<'win> WindowState<'win> {
@@ -67,8 +72,8 @@ impl<'win> WindowState<'win> {
             .await
             .unwrap();
 
-        let camera = Camera::new();
-        let projection = Projection::new(size.width, size.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let camera = Camera::default();
+        let projection = Projection::default(size);
         let camera_controller = CameraController::new();
 
         let mut camera_uniform = CameraUniform::new();
@@ -164,7 +169,7 @@ impl<'win> WindowState<'win> {
             camera_uniform,
             camera_controller,
             projection,
-            mouse_pressed: false,
+            control_state: ControlState::Inactive,
         }
     }
 
@@ -255,11 +260,18 @@ impl<'win> WindowState<'win> {
                 ..Default::default()
             });
 
+            // Upload global constants common to all the artifacts; these
+            // include camera position and projection.
             render_pass.set_bind_group(0, &self.world_bind_group, &[]);
+
             for (key, artifact) in artifacts.iter() {
                 let key = &key.artifact;
                 render_pass.set_pipeline(self.pipeline.get(key).unwrap());
+
+                // Upload constants specific to the artifact; these
+                // include colors.
                 render_pass.set_bind_group(1, &self.artifact_bind_group.get(key).unwrap(), &[]);
+
                 match artifact {
                     Artifact::PointCloud(point_cloud) => {
                         point_cloud.render(&mut render_pass);
@@ -285,6 +297,16 @@ impl<'win> WindowState<'win> {
 
         queue.submit([encoder.finish()]);
         output.present();
+    }
+
+    fn reset_view(&mut self) {
+        // let size = self.window.inner_size();
+        self.camera = Camera::default();
+        self.projection = Projection::default(self.window.inner_size());
+        // self.projection = Projection::default(size.width, size.height, cgmath::Deg(45.0), 0.1, 100.0);
+        self.camera_uniform
+            .update_view_proj(&self.camera, &self.projection);
+        self.window.request_redraw();
     }
 }
 
@@ -312,13 +334,16 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
     ) {
         match event {
             DeviceEvent::MouseMotion { delta } => {
-                if self.mouse_pressed {
-                    self.camera_controller.process_mouse(delta.0, delta.1);
-                    self.camera_controller.update_camera(&mut self.camera);
-                    self.camera_uniform
-                        .update_view_proj(&self.camera, &self.projection);
-                    self.window.request_redraw();
+                match self.control_state {
+                    ControlState::Inactive => return,
+                    ControlState::DragAngle => {
+                        self.camera_controller.process_mouse(delta.0, delta.1);
+                    }
                 }
+                self.camera_controller.update_camera(&mut self.camera);
+                self.camera_uniform
+                    .update_view_proj(&self.camera, &self.projection);
+                self.window.request_redraw();
             }
             _ => {}
         }
@@ -331,18 +356,26 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
         event: WindowEvent,
     ) {
         match event {
-            WindowEvent::CloseRequested
-            | WindowEvent::KeyboardInput {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+            WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
                         state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        logical_key,
                         ..
                     },
                 ..
-            } => {
-                event_loop.exit();
-            }
+            } => match logical_key {
+                Key::Named(NamedKey::Escape) => {
+                    event_loop.exit();
+                }
+                Key::Named(NamedKey::Space) => {
+                    self.reset_view();
+                }
+                _ => {}
+            },
             WindowEvent::Resized(size) => {
                 self.resize(size);
             }
@@ -354,7 +387,10 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
                 state,
                 ..
             } => {
-                self.mouse_pressed = state == ElementState::Pressed;
+                self.control_state = match state {
+                    ElementState::Pressed => ControlState::DragAngle,
+                    ElementState::Released => ControlState::Inactive,
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 self.camera_controller.process_scroll(delta);

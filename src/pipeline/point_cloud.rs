@@ -1,27 +1,42 @@
-use crate::{model, ArtifactUniform, RenderArtifact, WindowState, Element};
-use ply_rs::ply;
+use crate::{model, ArtifactUniform, Element, RenderArtifact, WindowState, IntoElement};
 use wgpu::util::DeviceExt;
+use std::io::BufRead;
+use ply_rs::{parser::Parser, ply};
 
 pub struct PointCloud {
     pub vertices: wgpu::Buffer,
-    pub num_vertices: u32
+    pub num_vertices: u32,
 }
 
 impl PointCloud {
-    pub fn render<'rpass>(
-        &'rpass self,
-        // vertices: &'rpass wgpu::Buffer,
-        render_pass: &mut wgpu::RenderPass<'rpass>,
-    ) {
-        // let num_vertices = vertices.size() / mem::size_of::<model::PlainVertex>() as u64;
-        render_pass.set_vertex_buffer(0, self.vertices.slice(..));
-        render_pass.draw(0..self.num_vertices, 0..1);
+    pub fn new(device: &wgpu::Device, header: &ply::Header) -> Option<PointCloud> {
+        if !header.elements.contains_key(&Element::Vertex.to_string()) {
+            return None;
+        }
+        
+        let element_size = std::mem::size_of::<model::PlainVertex>();
+        let count = header.elements.get(&Element::Vertex.to_string()).unwrap().count;
+        let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+            mapped_at_creation: false,
+            size: (2 * element_size * count) as u64,
+            label: Some("point_cloud::vertices"),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+
+        Some(PointCloud {
+            vertices,
+            num_vertices: count as u32,
+        })
     }
 }
 
 impl RenderArtifact for PointCloud {
     fn update_count(&mut self, header: &ply::Header) {
-        self.num_vertices = header.elements.get(&Element::Vertex.to_string()).unwrap().count as u32;
+        self.num_vertices = header
+            .elements
+            .get(&Element::Vertex.to_string())
+            .unwrap()
+            .count as u32;
     }
 
     fn create_pipeline_layout(
@@ -82,4 +97,21 @@ impl RenderArtifact for PointCloud {
         })
     }
 
+    fn needs_resize(&self, header: &ply::Header) -> bool {
+        model::PlainVertex::buffer_too_small(&header, &self.vertices)
+    }
+
+    fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header) {
+        let parse = Parser::<model::PlainVertex>::new();
+        let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
+        let data = parse
+            .read_payload_for_element(f, &element, &header)
+            .unwrap();
+        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&data));
+    }
+
+    fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>) {
+        render_pass.set_vertex_buffer(0, self.vertices.slice(..));
+        render_pass.draw(0..self.num_vertices, 0..1);
+    }
 }

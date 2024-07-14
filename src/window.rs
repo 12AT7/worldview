@@ -10,8 +10,8 @@ use winit::{
 };
 
 use crate::{
-    inject::Sequence, pipeline, Artifact, Camera, CameraController, CameraUniform, InjectionEvent,
-    Injector, Projection, RenderArtifact,
+    pipeline, Artifact, ArtifactsLock, Camera, CameraController, CameraUniform, InjectionEvent,
+    Projection, RenderArtifact,
 };
 
 // The playback thread needs to load GPU buffers, and for that it
@@ -27,7 +27,7 @@ pub static QUEUE: OnceLock<wgpu::Queue> = OnceLock::new();
 pub struct WindowState<'win> {
     surface: wgpu::Surface<'win>,
     window: &'win Window,
-    injector: Sequence,
+    artifacts: ArtifactsLock,
     pub surface_capabilities: wgpu::SurfaceCapabilities,
     pub point_cloud_pipeline_layout: wgpu::PipelineLayout,
     pub wireframe_pipeline_layout: wgpu::PipelineLayout,
@@ -46,10 +46,7 @@ pub struct WindowState<'win> {
 }
 
 impl<'win> WindowState<'win> {
-    pub async fn new(
-        window: &'win Window,
-        injector: Sequence,
-    ) -> WindowState<'win> {
+    pub async fn new(window: &'win Window, artifacts: ArtifactsLock) -> WindowState<'win> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window).unwrap();
@@ -152,7 +149,7 @@ impl<'win> WindowState<'win> {
         WindowState {
             surface,
             window,
-            injector,
+            artifacts,
             surface_capabilities,
             point_cloud_pipeline_layout,
             wireframe_pipeline_layout,
@@ -197,8 +194,7 @@ impl<'win> WindowState<'win> {
             }
         };
 
-        let artifacts = self.injector.get_artifacts();
-        let artifacts = artifacts.lock().unwrap();
+        let artifacts = self.artifacts.lock().unwrap();
 
         for (key, artifact) in artifacts.iter() {
             let key = &key.artifact;
@@ -372,14 +368,15 @@ impl<'win> ApplicationHandler<InjectionEvent> for WindowState<'win> {
     }
 }
 
-pub async fn run(
-    injector: Sequence,
-    event_loop: EventLoop<InjectionEvent>,
-) {
+pub async fn run(artifacts: ArtifactsLock, event_loop: EventLoop<InjectionEvent>) {
+    // Interoperability between winit, wgpu, and various platforms is
+    // complicated and the API's are currently in rapid flux (as of July
+    // 2024).  Step around this fight for now with a deprecated pattern.
+    #[allow(deprecated)]
     let window = event_loop
         .create_window(WindowAttributes::default())
         .unwrap();
 
-    let mut app = WindowState::new(&window, injector).await;
-    let _ = event_loop.run_app(&mut app);
+    let mut app = WindowState::new(&window, artifacts).await;
+    event_loop.run_app(&mut app).unwrap();
 }

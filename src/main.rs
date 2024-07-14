@@ -1,5 +1,12 @@
 use clap::{Parser, Subcommand};
-use std::{num::ParseIntError, path::PathBuf, time::Duration};
+use regex::Regex;
+use std::{
+    collections::HashMap,
+    num::ParseIntError,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::sync::watch;
 use winit::event_loop::EventLoop;
 
@@ -10,14 +17,44 @@ mod inject;
 mod key;
 mod model;
 mod pipeline;
+mod sequence;
 mod window;
 
 pub use artifact::{Artifact, ArtifactUniform, RenderArtifact};
 pub use camera::{Camera, CameraController, CameraUniform, Projection};
 pub use element::{Element, IntoElement};
-pub use inject::{inotify, playback, Injector};
+pub use inject::{inotify, playback};
 pub use key::Key;
+pub use sequence::Sequencer;
 pub use window::WindowState;
+
+// Visualized artifacts (PLY files) must come from somewhere, and we have
+// different use cases.  For now, we support dependency injection from
+// the filesystem, either as "playback" or using Linux inotify.  Future
+// extensions could be gRPC or HTTP/2 servers, or a portable inotify
+// replacement (good for Mac and non-Linux platforms).
+#[derive(Clone, Subcommand)]
+enum DependencyInjector {
+    /// Worldview: Enumerate pre-existing directory
+    Playback {
+        /// Playback directory of PLY files
+        path: PathBuf,
+        /// Inject a minimum delay between each frame (milliseconds)
+        #[clap(value_parser = parse_milliseconds, default_value="100")]
+        delay: Duration,
+    },
+    /// Worldview: Watch live Linux filesystem via inotify (default)
+    Notify { path: Option<PathBuf> },
+}
+
+#[derive(Parser)]
+struct Cli {
+    /// Comma separated list of enabled artifact types.  Default: no filter.
+    #[clap(short, long, value_delimiter = ',')]
+    filter: Option<Vec<String>>,
+    #[command(subcommand)]
+    injector: Option<DependencyInjector>,
+}
 
 #[derive(Debug)]
 pub enum InjectionEvent {
@@ -25,50 +62,43 @@ pub enum InjectionEvent {
     Remove(Key),
 }
 
-#[derive(Subcommand)]
-enum Mode {
-    Playback {
-        path: PathBuf,
-        #[clap(value_parser = parse_milliseconds, default_value="100")]
-        delay: Duration,
-    },
-    Notify {
-        path: Option<PathBuf>,
-    },
-}
+pub type ArtifactsLock = Arc<Mutex<HashMap<Key, Artifact>>>;
+const PLY_RE: &'static str = r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply";
 
-#[derive(Parser)]
-struct Cli {
-    #[command(subcommand)]
-    mode: Option<Mode>,
-}
-
-// Feed the visualizer with some kind of dependency injection.  Currently, 
-// we have: 
-//   1) Playback mode which enumerates a directory (with delay),
-//   2) Notify mode which injects frames from Linux inotify() events
-async fn run_injector(mode: Option<Mode>, 
-    injector: impl Injector,
-    exit: watch::Sender<bool>)
-{
+async fn run_dependency_injection<S: Sequencer>(
+    cli: &Cli,
+    sequencer: S,
+    exit: watch::Sender<bool>,
+) {
     let cwd = std::env::current_dir().unwrap();
-    match mode {
-        Some(Mode::Playback { path, delay }) => {
+
+    // Set up a command-line configureable filter, to inject only
+    // some artifacts into the renderer.  That can significantly speed up
+    // and de-clutter the display, if calculations are dropping too many
+    // types of artifacts.
+    let filter = Regex::new(&format!(
+        "({})",
+        cli.filter.clone().unwrap_or(vec![]).join("|")
+    ))
+    .unwrap();
+
+    match cli.injector.clone() {
+        Some(DependencyInjector::Playback { path, delay }) => {
             log::info!(
                 "Playback from {}; min refresh {}ms",
                 path.display(),
                 delay.as_millis()
             );
-            playback::run(path, injector, delay, exit).await
+            playback::run(path, sequencer, delay, filter, exit).await
         }
-        Some(Mode::Notify { path }) => {
+        Some(DependencyInjector::Notify { path }) => {
             let path = path.clone().unwrap_or(cwd);
             log::info!("Notify from {}", path.display());
-            inotify::run(path, injector, exit).await
+            inotify::run(path, sequencer, exit).await
         }
         None => {
             log::info!("Notify from CWD ({})", cwd.display());
-            inotify::run(cwd, injector, exit).await
+            inotify::run(cwd, sequencer, exit).await
         }
     }
 }
@@ -93,19 +123,27 @@ async fn main() {
     // Provide a signal for all threads to monitor for clean process exit.
     let (exit, _) = watch::channel(false);
 
-    let injector = inject::Sequence::new(event_loop.create_proxy());
+    // Artifacts are the producer / consumer queue where the dependency
+    // injector (producer) feeds the GUI thread (consumer).
+    let artifacts = Arc::new(Mutex::new(HashMap::<Key, Artifact>::new()));
 
-    // Launch dependency injection thread.
+    // The policy when (or if) artifacts get ejected are implemented in
+    // the sequencer.  Policies might be "replace" (just show the newest
+    // artifact) or "accumulate" (show all the artifacts from all time).
+    // It seems to be impossible to use dynamic dispatch into a tokio
+    // thread ('static + Send), so use static dispatch for the sequencer
+    // here.
+    let sequencer = sequence::Replace::new(artifacts.clone(), event_loop.create_proxy());
     let injector_task = tokio::spawn({
-        let injector = injector.clone();
         let exit = exit.clone();
-        async move { run_injector(cli.mode, injector, exit).await }
+        async move { run_dependency_injection(&cli, sequencer, exit).await }
     });
 
-    // Graphics must run on the main thread.  Do not attempt to fight this!
-    // On exit, this future will return cleanly when the window closes
-    // via operating system event, or user keypress.
-    window::run(injector.clone(), event_loop).await;
+    // Graphics must run on the main thread.  Do not attempt to fight this;
+    // the requirement is long baked into some operating systems (i.e.,
+    // Linux).  On exit, this future will return cleanly when the window
+    // closes via operating system event, or user keypress.
+    window::run(artifacts.clone(), event_loop).await;
 
     log::info!("Exit");
 
@@ -117,5 +155,3 @@ async fn main() {
 fn parse_milliseconds(s: &str) -> Result<Duration, ParseIntError> {
     s.parse().map(Duration::from_millis)
 }
-
-

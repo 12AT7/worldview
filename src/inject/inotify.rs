@@ -1,11 +1,11 @@
-use crate::Injector;
+use crate::Sequencer;
 use inotify::{EventMask, Inotify, WatchMask};
 use std::{fs, path::PathBuf};
 use tokio::sync::watch;
 
 // INotify will inject into the visualization, all new files that appear.
 
-pub async fn run(assets_dir: PathBuf, injector: impl Injector, exit: watch::Sender<bool>) {
+pub async fn run(assets_dir: PathBuf, sequencer: impl Sequencer, exit: watch::Sender<bool>) {
     let mut inotify = Inotify::init().unwrap();
     inotify
         .watches()
@@ -43,24 +43,24 @@ pub async fn run(assets_dir: PathBuf, injector: impl Injector, exit: watch::Send
 
     // Read events that were added with `Watches::add` above.
     tokio::task::block_in_place(move || {
-            let mut buffer = [0; 1024];
-            loop {
-                let events = inotify.read_events_blocking(&mut buffer).unwrap();
-                for event in events {
-                    // Check the exit sentinel for a clean exit.
-                    if event.name == Some(sentinel_path.file_name().unwrap()) {
-                        return;
-                    }
-
-                    let mut path = assets_dir.clone();
-                    path.push(event.name.unwrap());
-
-                    match event.mask {
-                        EventMask::CLOSE_WRITE => injector.add(&path),
-                        EventMask::DELETE => injector.remove(&path),
-                        _ => None,
-                    };
+        let mut buffer = [0; 1024];
+        loop {
+            let events = inotify.read_events_blocking(&mut buffer).unwrap();
+            for event in events {
+                // Check the exit sentinel for a clean exit.
+                if event.name == Some(sentinel_path.file_name().unwrap()) {
+                    return;
                 }
+
+                let mut path = assets_dir.clone();
+                path.push(event.name.unwrap());
+
+                match event.mask {
+                    EventMask::CLOSE_WRITE => sequencer.add(&path),
+                    EventMask::DELETE => sequencer.remove(&path),
+                    _ => None,
+                };
             }
+        }
     });
 }

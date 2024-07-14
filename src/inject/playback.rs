@@ -1,4 +1,4 @@
-use crate::Injector;
+use crate::{Sequencer, PLY_RE};
 use itertools::Itertools;
 use regex::Regex;
 use std::{fs, path::PathBuf, time::Duration};
@@ -9,36 +9,36 @@ use tokio::{sync::watch, time};
 
 pub async fn run(
     assets_dir: PathBuf,
-    injector: impl Injector,
+    sequencer: impl Sequencer,
     delay: Duration,
+    filter: Regex,
     exit: watch::Sender<bool>,
 ) {
     let mut interval = time::interval(delay);
     let mut exit = exit.subscribe();
 
-    let re = Regex::new(r"(?<instance>.+)\.(?<artifact>.+)\.ply").unwrap();
+    let ply_path_re = Regex::new(PLY_RE).unwrap();
 
+    // Iterate through the assets.  Repeat when list is exhausted.
     loop {
-        // Iterate through the assets.  Repeat when list is exhausted.
-        for path in fs::read_dir(assets_dir.clone())
-            .unwrap()
-            .filter_map(|entry| {
-                // Filter out non-ply or non-interesting paths.
-                let path = entry.unwrap().path();
-                if re.is_match(path.to_str().unwrap()) {
-                    Some(path)
-                } else {
-                    None
-                }
+        for _key in fs::read_dir(assets_dir.clone())
+            .expect(&format!("Cannot read dir {}", assets_dir.display()))
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                // Reject entries that do not match the naming convention.
+                ply_path_re.is_match(path.to_str().unwrap())
+            })
+            .filter(|path| {
+                // Reject entries that do not match user supplied filter.
+                filter.is_match(path.to_str().unwrap())
             })
             .sorted()
+            .filter_map(|path| {
+                // The path is good; inject the artifact.
+                sequencer.add(&path)
+            })
         {
-            if injector.add(&path).is_none() {
-                continue;
-            }
-
-            // Sleep until the next frame.
-            // The interval should come from the pose timestamp.
+            // For each successful injection, implement the delay.
             interval.reset();
             tokio::select! {
                 _ = interval.tick() => {}

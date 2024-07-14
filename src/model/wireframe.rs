@@ -6,7 +6,7 @@ use ply_rs::ply;
 pub struct Wireframe {
     pub vertex_indices: [i32; 6],
 }
-//
+
 // Teach worldview how to find the vertex in the PLY header
 impl IntoElement for Wireframe {
     fn element() -> Element { Element::Facet }

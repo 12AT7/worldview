@@ -191,6 +191,21 @@ impl<'win> WindowState<'win> {
     }
 
     fn redraw(&mut self) {
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera_uniform
+            .update_view_proj(&self.camera, &self.projection);
+        let surface = &self.surface;
+        let output = match surface.get_current_texture() {
+            Ok(surface) => surface,
+            Err(e) => {
+                log::error!("surface {:?}", e);
+                return;
+            }
+        };
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
         let device = match DEVICE.get() {
             Some(device) => device,
             None => {
@@ -199,8 +214,16 @@ impl<'win> WindowState<'win> {
             }
         };
 
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Encoder"),
+        });
+
+        // Lock the artifacts and the queue as late as possible, to 
+        // minimize contention with the dependency injector that is 
+        // concurrently writing buffers.
         let artifacts = self.artifacts.lock().unwrap();
 
+        // Initialize GPU resources for any new artifacts that have arrived.
         for (key, artifact) in artifacts.iter() {
             let key = &key.artifact;
             if !self.pipeline.contains_key(key) {
@@ -220,25 +243,6 @@ impl<'win> WindowState<'win> {
                 self.artifact_uniform_buffer.insert(key.clone(), buffer);
             }
         }
-
-        self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform
-            .update_view_proj(&self.camera, &self.projection);
-        let surface = &self.surface;
-        let output = match surface.get_current_texture() {
-            Ok(surface) => surface,
-            Err(e) => {
-                log::error!("surface {:?}", e);
-                return;
-            }
-        };
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Encoder"),
-        });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -286,24 +290,24 @@ impl<'win> WindowState<'win> {
             }
         }
 
-        // Let 'er rip.  Render the frame.
+        // Lock the queue as late as possible.
         let queue = QUEUE.get().unwrap();
 
+        // Upload the camera viewpoint.
         queue.write_buffer(
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
+        // Let 'er rip.  Render the frame.
         queue.submit([encoder.finish()]);
         output.present();
     }
 
     fn reset_view(&mut self) {
-        // let size = self.window.inner_size();
         self.camera = Camera::default();
         self.projection = Projection::default(self.window.inner_size());
-        // self.projection = Projection::default(size.width, size.height, cgmath::Deg(45.0), 0.1, 100.0);
         self.camera_uniform
             .update_view_proj(&self.camera, &self.projection);
         self.window.request_redraw();

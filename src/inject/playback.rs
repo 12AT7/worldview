@@ -9,7 +9,7 @@ use tokio::{sync::watch, time};
 
 pub async fn run(
     assets_dir: PathBuf,
-    sequencer: impl Sequencer,
+    sequencer: impl Sequencer + Clone,
     delay: Duration,
     filter: Regex,
     exit: watch::Sender<bool>,
@@ -36,10 +36,16 @@ pub async fn run(
         {
             interval.reset();
 
-            // The path is good; inject the artifact.
-            if sequencer.add(&path).is_none() {
-                continue;
-            }
+            tokio::task::block_in_place({
+                let sequencer = sequencer.clone();
+                move || {
+                    // The path is good; inject the artifact.
+                    sequencer.add(&path);
+                    // if sequencer.add(&path).is_none() {
+                    //     continue;
+                    // }
+                }
+            });
 
             // For each successful injection, implement the delay.
             tokio::select! {

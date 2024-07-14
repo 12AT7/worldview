@@ -1,3 +1,4 @@
+use crate::{Element, IntoElement};
 use ply_rs::ply;
 
 #[repr(C)]
@@ -6,7 +7,12 @@ pub struct TriFacet {
     pub vertex_indices: [i32; 3],
 }
 
-// Teach ply_rs how model a vertex.
+// Teach worldview how to find the facet in the PLY header
+impl IntoElement for TriFacet {
+    fn element() -> Element { Element::Facet }
+}
+
+// Teach ply_rs how model a facet.
 impl ply::PropertyAccess for TriFacet {
     fn new() -> Self {
         TriFacet {

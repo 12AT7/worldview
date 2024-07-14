@@ -5,6 +5,7 @@ use ply_rs::{parser::Parser, ply};
 
 pub struct PointCloud {
     pub vertices: wgpu::Buffer,
+    stage_vertices: Vec<model::PlainVertex>,
     pub num_vertices: u32,
 }
 
@@ -25,6 +26,7 @@ impl PointCloud {
 
         Some(PointCloud {
             vertices,
+            stage_vertices: vec![],
             num_vertices: count as u32,
         })
     }
@@ -101,13 +103,16 @@ impl RenderArtifact for PointCloud {
         model::PlainVertex::buffer_too_small(&header, &self.vertices)
     }
 
-    fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header) {
+    fn read_ply(&mut self, f: &mut impl BufRead, header: &ply::Header) {
         let parse = Parser::<model::PlainVertex>::new();
         let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
-        let data = parse
+        self.stage_vertices = parse
             .read_payload_for_element(f, &element, &header)
             .unwrap();
-        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&data));
+    }
+
+    fn write_buffer(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&self.stage_vertices));
     }
 
     fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>) {

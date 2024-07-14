@@ -37,7 +37,6 @@ impl Replace {
     }
 
     fn inject(&self, key: Key, path: &PathBuf) {
-        let mut artifacts = self.artifacts.lock().unwrap();
         let parse_header = Parser::<ply::DefaultElement>::new();
 
         let f = File::open(path).unwrap();
@@ -63,6 +62,7 @@ impl Replace {
 
         // Remove buffers that are smaller than the new artifact.  This
         // will cause reallocation of larger buffers, immediately below.
+        let mut artifacts = self.artifacts.lock().unwrap();
         let needs_resize = match artifacts.get(&key) {
             Some(artifact) => artifact.needs_resize(&header),
             None => false,
@@ -97,7 +97,8 @@ impl Replace {
         let queue = QUEUE.get().unwrap();
         let artifact = artifacts.get_mut(&key).unwrap();
         artifact.update_count(&header);
-        artifact.write_buffer(queue, &mut f, &header);
+        artifact.read_ply(&mut f, &header);
+        artifact.write_buffer(queue);
         queue.submit([]);
 
         // New buffers are loaded.  Fire the graphics refresh!

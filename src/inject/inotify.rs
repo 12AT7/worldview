@@ -23,7 +23,9 @@ pub async fn run(assets_dir: PathBuf, sequencer: impl Sequencer, exit: watch::Se
     let mut sentinel_path = assets_dir.clone();
     sentinel_path.push("exit_sentinel");
 
-    // Block on our exit watcher, and write the sentinel when it fires.
+    // Block on our exit watcher, and write the sentinel when it fires.  
+    // This whole task exits only to cleanly terminate the blocking read 
+    // below.
     tokio::spawn({
         let mut exit = exit.subscribe();
         let sentinel_path = sentinel_path.clone();

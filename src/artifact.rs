@@ -19,8 +19,8 @@ pub trait RenderArtifact {
 
     fn create_uniform_buffer(device: &wgpu::Device) -> wgpu::Buffer;
     fn needs_resize(&self, header: &ply::Header) -> bool;
-    fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header);
-
+    fn read_ply(&mut self, f: &mut impl BufRead, header: &ply::Header);
+    fn write_buffer(&self, queue: &wgpu::Queue);
     fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>);
 }
 
@@ -65,11 +65,19 @@ impl Artifact {
         }
     }
 
-    pub fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header) {
+    pub fn read_ply(&mut self, f: &mut impl BufRead, header: &ply::Header) {
         match self {
-            Artifact::PointCloud(point_cloud) => point_cloud.write_buffer(&queue, f, &header),
-            Artifact::Wireframe(wireframe) => wireframe.write_buffer(&queue, f, &header),
-            Artifact::Mesh(mesh) => mesh.write_buffer(&queue, f, &header),
+            Artifact::PointCloud(point_cloud) => point_cloud.read_ply(f, &header),
+            Artifact::Wireframe(wireframe) => wireframe.read_ply(f, &header),
+            Artifact::Mesh(mesh) => mesh.read_ply(f, &header),
+        }
+    }
+
+    pub fn write_buffer(&self, queue: &wgpu::Queue) {
+        match self {
+            Artifact::PointCloud(point_cloud) => point_cloud.write_buffer(&queue),
+            Artifact::Wireframe(wireframe) => wireframe.write_buffer(&queue),
+            Artifact::Mesh(mesh) => mesh.write_buffer(&queue),
         }
     }
 

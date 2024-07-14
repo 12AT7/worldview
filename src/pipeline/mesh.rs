@@ -6,6 +6,8 @@ use ply_rs::{parser::Parser, ply};
 pub struct Mesh {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
+    stage_vertices: Vec<model::PlainVertex>,
+    stage_indices: Vec<model::TriFacet>,
     num_facets: u32,
 }
 
@@ -38,6 +40,8 @@ impl Mesh {
         Some(Mesh {
             vertices,
             indices,
+            stage_vertices: vec![],
+            stage_indices: vec![],
             num_facets: count as u32,
         })
     }
@@ -112,23 +116,26 @@ impl RenderArtifact for Mesh {
 
     fn needs_resize(&self, header: &ply::Header) -> bool {
         model::PlainVertex::buffer_too_small(&header, &self.vertices)
-            || model::Wireframe::buffer_too_small(&header, &self.indices)
+            || model::TriFacet::buffer_too_small(&header, &self.indices)
     }
     
-    fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header) {
+    fn read_ply(&mut self, f: &mut impl BufRead, header: &ply::Header) {
         let parse = Parser::<model::PlainVertex>::new();
         let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
-        let data = parse
+        self.stage_vertices = parse
             .read_payload_for_element(f, &element, &header)
             .unwrap();
-        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&data));
 
         let parse = Parser::<model::TriFacet>::new();
         let element = header.elements.get(&Element::Facet.to_string()).unwrap();
-        let data = parse
+        self.stage_indices = parse
             .read_payload_for_element(f, &element, &header)
             .unwrap();
-        queue.write_buffer(&self.indices, 0, bytemuck::cast_slice(&data));
+    }
+
+    fn write_buffer(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&self.stage_vertices));
+        queue.write_buffer(&self.indices, 0, bytemuck::cast_slice(&self.stage_indices));
     }
 
     fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>) {

@@ -65,7 +65,7 @@ pub enum InjectionEvent {
 pub type ArtifactsLock = Arc<Mutex<HashMap<Key, Artifact>>>;
 const PLY_RE: &'static str = r"(?<instance>[0-9]+)\.(?<artifact>.+)\.ply";
 
-async fn run_dependency_injection<S: Sequencer>(
+async fn run_dependency_injection<S: Sequencer + Clone>(
     cli: &Cli,
     sequencer: S,
     exit: watch::Sender<bool>,
@@ -103,7 +103,7 @@ async fn run_dependency_injection<S: Sequencer>(
     }
 }
 
-#[tokio::main(worker_threads = 4)]
+#[tokio::main(worker_threads = 8)]
 async fn main() {
     let cli = Cli::parse();
     env_logger::builder()

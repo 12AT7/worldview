@@ -6,6 +6,8 @@ use wgpu::util::DeviceExt;
 pub struct Wireframe {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
+    stage_vertices: Vec<model::PlainVertex>,
+    stage_indices: Vec<model::Wireframe>,
     pub num_lines: u32,
 }
 
@@ -38,6 +40,8 @@ impl Wireframe {
         Some(Wireframe {
             vertices,
             indices,
+            stage_vertices: vec![],
+            stage_indices: vec![],
             num_lines: count as u32 / 2,
         })
     }
@@ -116,27 +120,23 @@ impl RenderArtifact for Wireframe {
             || model::Wireframe::buffer_too_small(&header, &self.indices)
     }
 
-    fn write_buffer(&self, queue: &wgpu::Queue, f: &mut impl BufRead, header: &ply::Header) {
-        let vertex_element = match header.elements.get(&Element::Vertex.to_string()) {
-            Some(e) => e,
-            None => return,
-        };
-        let index_element = match header.elements.get(&Element::Facet.to_string()) {
-            Some(e) => e,
-            None => return,
-        };
-
+    fn read_ply(&mut self, f: &mut impl BufRead, header: &ply::Header) {
         let parse = Parser::<model::PlainVertex>::new();
-        let data = parse
-            .read_payload_for_element(f, &vertex_element, &header)
+        let element = header.elements.get(&Element::Vertex.to_string()).unwrap();
+        self.stage_vertices = parse
+            .read_payload_for_element(f, &element, &header)
             .unwrap();
-        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&data));
 
         let parse = Parser::<model::Wireframe>::new();
-        let data = parse
-            .read_payload_for_element(f, &index_element, &header)
+        let element = header.elements.get(&Element::Facet.to_string()).unwrap();
+        self.stage_indices = parse
+            .read_payload_for_element(f, &element, &header)
             .unwrap();
-        queue.write_buffer(&self.indices, 0, bytemuck::cast_slice(&data));
+    }
+
+    fn write_buffer(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&self.stage_vertices));
+        queue.write_buffer(&self.indices, 0, bytemuck::cast_slice(&self.stage_indices));
     }
 
     fn render<'rpass>(&'rpass self, render_pass: &mut wgpu::RenderPass<'rpass>) {

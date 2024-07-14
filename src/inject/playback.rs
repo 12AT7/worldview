@@ -21,7 +21,7 @@ pub async fn run(
 
     // Iterate through the assets.  Repeat when list is exhausted.
     loop {
-        for _key in fs::read_dir(assets_dir.clone())
+        for path in fs::read_dir(assets_dir.clone())
             .expect(&format!("Cannot read dir {}", assets_dir.display()))
             .map(|entry| entry.unwrap().path())
             .filter(|path| {
@@ -33,13 +33,15 @@ pub async fn run(
                 filter.is_match(path.to_str().unwrap())
             })
             .sorted()
-            .filter_map(|path| {
-                // The path is good; inject the artifact.
-                sequencer.add(&path)
-            })
         {
-            // For each successful injection, implement the delay.
             interval.reset();
+
+            // The path is good; inject the artifact.
+            if sequencer.add(&path).is_none() {
+                continue;
+            }
+
+            // For each successful injection, implement the delay.
             tokio::select! {
                 _ = interval.tick() => {}
                 Ok(_) = exit.changed() => {

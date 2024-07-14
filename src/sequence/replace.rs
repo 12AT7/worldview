@@ -1,6 +1,6 @@
 use crate::{
     window::{DEVICE, QUEUE},
-    Artifact, InjectionEvent, Key, Sequencer, PLY_RE
+    Artifact, Element, InjectionEvent, Key, Sequencer, PLY_RE,
 };
 use ply_rs::{parser::Parser, ply};
 use regex::Regex;
@@ -13,7 +13,7 @@ use std::{
 };
 use winit::event_loop::EventLoopProxy;
 
-// A Sequence is an injector that only keeps the newest artifact, and
+// Replace is a sequencer that only keeps the newest artifact, and
 // ejects all others.  Consequently, the display will show at most
 // one artifact type at a time.
 
@@ -40,16 +40,26 @@ impl Replace {
         let mut artifacts = self.artifacts.lock().unwrap();
         let parse_header = Parser::<ply::DefaultElement>::new();
 
-        let filename = path.file_name().unwrap().to_str().unwrap();
         let f = File::open(path).unwrap();
         let mut f = BufReader::new(f);
         let header = match parse_header.read_header(&mut f) {
             Ok(h) => h,
             Err(err) => {
-                log::error!("Failed to parse PLY header {}: {:?}", filename, err);
+                log::error!("Failed to parse PLY header {}: {:?}", path.display(), err);
                 return;
             }
         };
+
+        if header
+            .elements
+            .get(&Element::Vertex.to_string())
+            .unwrap()
+            .count
+            == 0
+        {
+            log::warn!("{} is empty; rejecting it", key);
+            return;
+        }
 
         // Remove buffers that are smaller than the new artifact.  This
         // will cause reallocation of larger buffers, immediately below.
@@ -67,7 +77,7 @@ impl Replace {
             let device = match DEVICE.get() {
                 Some(device) => device,
                 None => {
-                    log::debug!("Playback waiting for WGPU initialization");
+                    log::debug!("Wait for WGPU initialization");
                     return;
                 }
             };
@@ -84,14 +94,15 @@ impl Replace {
             };
         }
 
+        let queue = QUEUE.get().unwrap();
         let artifact = artifacts.get_mut(&key).unwrap();
         artifact.update_count(&header);
-        let queue = QUEUE.get().unwrap(); // Will succeed if DEVICE did.
         artifact.write_buffer(queue, &mut f, &header);
         queue.submit([]);
 
+        // New buffers are loaded.  Fire the graphics refresh!
         self.event_loop_proxy
-            .send_event(InjectionEvent::Add(key.clone()))
+            .send_event(InjectionEvent::Add(key))
             .ok();
     }
 }
@@ -112,22 +123,12 @@ impl Sequencer for Replace {
         };
 
         let key = Key {
-            instance: None,
+            instance: capture["instance"].parse::<u32>().ok(),
             artifact: capture["artifact"].to_string(),
         };
+        log::debug!("Add {}", key);
 
         self.inject(key.clone(), path);
-
-        // We actually need the working key to ignore the "instance" field;
-        // this is what makes this sequencer show only one artifact.
-        // However, this is confusing on the log message, so we actually
-        // compute a second key just for the log.
-        let log_key = Key {
-            instance: capture["instance"].parse::<u32>().ok(),
-            artifact: key.artifact.clone(),
-        };
-        log::debug!("Replace {}", log_key);
-
         Some(key)
     }
 
